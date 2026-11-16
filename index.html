@@ -208,7 +208,7 @@ function defaults() {
   L('Trufa Lacreme', 5.5, [['Ao leite', 3.79], ['Branca', 3.79], ['Avelã', 3.79], ['70%', 3.79], ['Kids', 3.79], ['Pistache', 3.79]]);
   L('Trufa Tradicional', 6.5, [['Ao leite', 5.29], ['Branca', 5.29], ['Mezzo', 5.29]]);
   L('Trufa Variadas', 7, [['Torta de limão', 5.29], ['Maracujá', 5.29], ['Morango', 5.29], ['Coco', 5.29], ['55%', 5.29], ['Paçoca', 5.29], ['Menta', 5.29], ['Speculoos', 5.29]]);
-  return { v: 5, products: out, customers: [], sales: [], stockLog: [], lastBackup: null };
+  return { v: 5, products: out, customers: [], sales: [], stockLog: [], invests: [], lastBackup: null };
 }
 function migrate(st) {
   if ((st.v || 0) < 3) {
@@ -224,6 +224,7 @@ function migrate(st) {
     st.products.forEach(p => { const c = C[p.line + '|' + p.flavor]; if (c && !p.cost) p.cost = c; });
     st.v = 5;
   }
+  if (!Array.isArray(st.invests)) st.invests = [];
   return st;
 }
 function load() {
@@ -752,8 +753,8 @@ function vLucro() {
 function vMais() {
   const M = (v, ic, t, s) => `<button class="card menu" data-a="tab" data-v="${v}"><span class="ic">${ic}</span><div><b>${t}</b><small>${s}</small></div></button>`;
   const nuvem = !cloudOn ? 'Ainda não ligado' : !META.uid ? 'Entre para guardar seus dados' : pillParts()[1].replace('☁️ ', '');
-  return head('Mais') + M('precos', '💰', 'Preços e custos', 'Quanto você paga e quanto vende') + M('entradas', '📦', 'Entradas de estoque', `${S.stockLog.length} lançamentos`) +
-    M('extrato', '📒', 'Extrato', 'Tudo que entrou e saiu de produtos') +
+  return head('Mais') + M('repor', '🔔', 'O que repor', reporSub()) + M('precos', '💰', 'Preços e custos', 'Quanto você paga e quanto vende') + M('entradas', '📦', 'Entradas de estoque', `${S.stockLog.length} lançamentos`) +
+    M('extrato', '📒', 'Extrato', 'Tudo que entrou e saiu de produtos') + M('invest', '🧰', 'Investimentos', S.invests.length ? brl(invTotal()) + ' investidos' : 'Bolsa térmica, embalagens…') +
     M('clientes', '👩', 'Clientes', `${S.customers.length} cadastrados`) + M('hist', '🧾', 'Histórico de vendas', `${S.sales.length} vendas`) +
     M('nuvem', '☁️', 'Banco de dados', nuvem) + M('calc', '🧮', 'Calculadora', 'Igual à do iPhone') + M('backup', '💾', 'Backup e restaurar', 'Cópia extra dos dados');
 }
@@ -913,10 +914,12 @@ function buildReport(p) {
   const areceber = sales.filter(x => x.status === 'pending').reduce((a, x) => a + x.total, 0);
   const units = sales.filter(x => !x.own).reduce((a, x) => a + x.items.reduce((b, i) => b + i.qty, 0), 0);
   const now = new Date();
+  const invs = S.invests.filter(v => inRange(Date.parse(v.date + 'T12:00:00'), p)).sort((a, b) => a.date < b.date ? -1 : 1);
   const resumo = { name: 'Resumo', widths: [34, 22], rows: [[B('Ribas Gourmet')], ['Período', PL[p]], ['Gerado em', fmtDMY(now) + ' ' + fmtHM(now)], [],
     [B('Vendi'), MB(rev)], [B('Paguei (custo dos produtos)'), MB(cost)], [B('Lucro'), MB(rev - cost)], ['   (o lucro já desconta o que peguei pra mim)'],
     ['Peguei pra mim (só custo)', M(ownCost)], ['Já recebi', M(recebido)], ['Ainda vou receber', M(areceber)], [],
-    ['Número de vendas', sales.filter(x => !x.own).length], ['Unidades vendidas', units]] };
+    ['Número de vendas', sales.filter(x => !x.own).length], ['Unidades vendidas', units], [],
+    [B('Investimentos no período'), MB(invs.reduce((a, v) => a + v.value, 0))]] };
   const vr = [H(['Data', 'Hora', 'Cliente', 'Itens', 'Descrição', 'Vendi', 'Paguei', 'Lucro', 'Pagamento', 'Situação'])];
   sales.forEach(x => vr.push([fmtDMY(x.date), fmtHM(x.date), x.customerName || '', itemsText(x), x.desc || '', M(x.total), M(x.cost), M(x.total - x.cost), x.status === 'paid' && !x.own ? x.method : '', sit(x)]));
   vr.push(['TOTAL', '', '', '', '', MB(rev), MB(cost), MB(rev - cost)]);
@@ -933,12 +936,16 @@ function buildReport(p) {
   pr.push(['TOTAL', '', '', '', MB(pend.reduce((a, x) => a + x.total, 0))]);
   const sr = [H(['Linha', 'Sabor', 'Em estoque', 'Paguei (un)', 'Vendo (un)', 'Lucro (un)', 'Pago no estoque'])];
   S.products.forEach(q => sr.push([q.line || q.name, q.flavor || '', q.stock, M(q.cost || 0), M(q.price), M(q.price - (q.cost || 0)), M(Math.max(0, q.stock) * (q.cost || 0))]));
+  const ivr = [H(['Data', 'Item', 'Valor', 'Observação'])];
+  invs.forEach(v => ivr.push([fmtDMY(v.date + 'T12:00:00'), v.name, M(v.value), v.note || '']));
+  ivr.push(['TOTAL', '', MB(invs.reduce((a, v) => a + v.value, 0))]);
   return [resumo,
     { name: 'Vendas', rows: vr, freeze: true, widths: [12, 8, 18, 40, 28, 13, 13, 13, 13, 11] },
     { name: 'Itens vendidos', rows: ir, freeze: true, widths: [12, 18, 28, 11, 13, 13, 13, 11] },
     { name: 'Extrato de estoque', rows: er, freeze: true, widths: [12, 28, 12, 11, 36] },
     { name: 'Pendentes', rows: pr, freeze: true, widths: [20, 12, 40, 28, 13] },
-    { name: 'Estoque atual', rows: sr, freeze: true, widths: [20, 22, 12, 13, 13, 13, 16] }];
+    { name: 'Estoque atual', rows: sr, freeze: true, widths: [20, 22, 12, 13, 13, 13, 16] },
+    { name: 'Investimentos', rows: ivr, freeze: true, widths: [12, 30, 13, 30] }];
 }
 async function exportXlsx() {
   const bytes = buildXlsx(buildReport(xlsP)), name = 'ribas-planilha-' + (xlsP === '30' ? '30dias' : xlsP) + '-' + dkey(new Date()) + '.xlsx';
@@ -955,6 +962,86 @@ function xlsCard() {
   <p class="muted">Um arquivo .xlsx com vendas, itens vendidos, extrato de estoque, pendentes e estoque atual. Abre no Excel, Numbers ou Planilhas.</p>
   ${chipsFor(xlsP, 'xlsp')}<p class="muted" style="margin:0 0 4px">Semana = de segunda a domingo.</p>
   <button class="btn primary wide" data-a="xlsx">Baixar planilha · ${PL[xlsP]}</button></div>`;
+}
+
+/* ---------- O que repor ---------- */
+let rdays = 14;
+col['repor:ok'] = true;   // "Tudo certo" começa fechado
+function repoData() {
+  const now = Date.now(), tr = new Set(S.stockLog.map(e => e.pid));
+  S.sales.forEach(x => x.items.forEach(i => tr.add(i.pid)));
+  const first = S.sales.length ? Math.min(...S.sales.map(x => Date.parse(x.date))) : now;
+  const win = Math.min(30, Math.max(7, Math.ceil((now - first) / 864e5))), cutoff = now - win * 864e5, sold = {};
+  S.sales.forEach(x => { if (Date.parse(x.date) >= cutoff) x.items.forEach(i => { sold[i.pid] = (sold[i.pid] || 0) + i.qty; }); });
+  const rows = S.products.filter(q => tr.has(q.id)).map(q => {
+    const out = sold[q.id] || 0, rate = out / win, left = rate > 0 ? Math.floor(Math.max(0, q.stock) / rate) : null;
+    const status = q.stock <= 0 ? 'zero' : (q.stock <= q.min || (left !== null && left <= 7)) ? 'low' : 'ok';
+    const target = Math.max(Math.ceil(rate * rdays), q.min * 2);
+    return { p: q, out, rate, left, status, suggest: status === 'ok' ? 0 : Math.max(1, target - Math.max(0, q.stock)) };
+  });
+  const rk = { zero: 0, low: 1, ok: 2 }, L = r => r.left === null ? 999 : r.left;
+  rows.sort((a, b) => rk[a.status] - rk[b.status] || L(a) - L(b) || b.out - a.out);
+  return { rows, win, untracked: S.products.length - rows.length };
+}
+const reporSub = () => { const n = repoData().rows.filter(r => r.status !== 'ok').length; return n ? n + (n > 1 ? ' sabores para repor' : ' sabor para repor') : 'Tudo certo por enquanto'; };
+function reporText() {
+  const need = repoData().rows.filter(r => r.status !== 'ok');
+  if (!need.length) return 'Nada para repor por enquanto 🎉';
+  return 'Repor (Ribas Gourmet) · ' + fmtD(dkey(new Date())) + '\n' + need.map(r => '• ' + short(r.p.name) + ': +' + r.suggest).join('\n');
+}
+function vRepor() {
+  const { rows, win, untracked } = repoData();
+  const need = rows.filter(r => r.status !== 'ok'), good = rows.filter(r => r.status === 'ok');
+  const z = need.filter(r => r.status === 'zero'), l = need.filter(r => r.status === 'low');
+  const units = need.reduce((a, r) => a + r.suggest, 0), cost = need.reduce((a, r) => a + r.suggest * (r.p.cost || 0), 0);
+  const card = r => {
+    const q = r.p, wk = Math.round(r.rate * 7 * 10) / 10;
+    const tag = r.status === 'zero' ? '<span class="chip red">Esgotado</span>' : r.status === 'low' ? '<span class="chip orange">Acabando</span>' : '<span class="chip green">Ok</span>';
+    const vel = r.out ? 'vende ~' + String(wk).replace('.', ',') + '/semana · ' + (r.left === 0 ? 'não dura 1 dia' : 'dura ~' + r.left + (r.left === 1 ? ' dia' : ' dias')) : 'sem vendas recentes';
+    return `<div class="card tight prod"><div class="pinfo"><h3>${esc(short(q.name))}</h3>
+      <div class="chips" style="margin-top:6px">${tag}${r.suggest ? `<span class="chip">Repor +${r.suggest}</span>` : ''}</div>
+      <p class="muted" style="margin:6px 0 0">Estoque ${q.stock} · ${vel}</p></div>
+      <button class="btn small primary" data-a="stockadd" data-id="${q.id}">+ Lançar</button></div>`;
+  };
+  const H = (t, c) => `<h3 style="margin:16px 4px 4px;color:${c}">${t}</h3>`;
+  const D = v => `<button class="${rdays === v ? 'on' : ''}" data-a="rdays" data-v="${v}">${v} dias</button>`;
+  return sub('', 'Repor') + (rows.length ? `
+    <div class="hero"><span>${need.length ? 'Para repor' : 'Está tudo certo'}</span><b>${need.length ? need.length + (need.length > 1 ? ' sabores' : ' sabor') : '🎉'}</b>
+      <span>${need.length ? '~' + units + ' unidades · custo estimado ' + brl(cost) : 'Nada acabando por enquanto'}</span></div>
+    <p class="muted" style="margin:6px 4px 0">Quantos dias de vendas quer cobrir?</p><div class="chipsrow">${D(7)}${D(14)}${D(30)}</div>
+    ${need.length ? `<button class="btn primary wide" data-a="copyrepor" style="margin-top:0">📋 Copiar lista para comprar</button>${navigator.share ? '<button class="btn wide" data-a="sharerepor">📤 Enviar lista</button>' : ''}` : ''}
+    ${z.length ? H('🔴 Esgotados', 'var(--red)') + z.map(card).join('') : ''}
+    ${l.length ? H('🟠 Acabando', 'var(--orange)') + l.map(card).join('') : ''}
+    ${good.length ? `<button class="gh" data-a="toggle" data-k="repor:ok"><span>${isOpen('repor:ok') ? '▾' : '▸'} ✅ Tudo certo (${good.length})</span></button>${isOpen('repor:ok') ? good.map(card).join('') : ''}` : ''}
+    <p class="muted" style="text-align:center;margin-top:14px">Baseado nas vendas dos últimos ${win} dias e no “avisar quando ≤” de cada sabor.${untracked ? '<br>' + untracked + ' sabores ainda sem estoque lançado não entram na conta.' : ''}</p>`
+    : '<div class="empty">Lance as entradas na aba Estoque (e faça algumas vendas) que o app mostra aqui o que repor.</div>');
+}
+
+/* ---------- Investimentos ---------- */
+const invTotal = () => r2(S.invests.reduce((a, x) => a + x.value, 0));
+function vInvest() {
+  const list = S.invests.slice().sort((a, b) => a.date < b.date ? 1 : a.date > b.date ? -1 : (a.at < b.at ? 1 : -1));
+  const tot = invTotal();
+  const lucro = r2(S.sales.reduce((a, x) => a + x.total - x.cost, 0)), saldo = r2(lucro - tot);
+  return sub('', 'Investimentos') + `<button class="btn wide primary" data-a="newinv" style="margin-top:0">+ Novo investimento</button>
+  <div class="hero"><span>Total investido</span><b>${brl(tot)}</b><span>${list.length ? list.length + (list.length > 1 ? ' itens' : ' item') : 'Nada lançado ainda'}</span></div>
+  ${tot > 0 ? `<div class="card"><h3>Já se pagou?</h3>
+    <div class="line"><span>Lucro das vendas (tudo)</span><b>${brl(lucro)}</b></div>
+    <div class="line"><span>Investimentos</span><b>− ${brl(tot)}</b></div>
+    <div class="line"><span>${saldo >= 0 ? 'Sobrou' : 'Falta recuperar'}</span><b style="color:var(${saldo >= 0 ? '--green' : '--red'})">${brl(Math.abs(saldo))}</b></div>
+    <p class="muted" style="margin:8px 0 0">Aqui é só uma comparação. O “Lucro” continua sendo só o que vendi − o que paguei nas trufas.</p></div>` : ''}
+  ${list.length ? list.map(x => `<div class="card prod" data-a="editinv" data-id="${x.id}"><div class="pinfo"><h3>${esc(x.name)}</h3><p class="sub">${fmtD(x.date)}${x.note ? ' · ' + esc(x.note) : ''}</p></div><b style="font-size:18px">${brl(x.value)}</b></div>`).join('')
+    : '<div class="empty">Lance aqui o que você comprou para o negócio: bolsa térmica, embalagens, assinatura do Claude Pro…</div>'}`;
+}
+function invSheet(id) {
+  const x = id ? S.invests.find(v => v.id === id) : { name: '', value: '', date: dkey(new Date()), note: '' };
+  sheet(`<h2>${id ? 'Editar investimento' : 'Novo investimento'}</h2><form data-form="inv" data-id="${id || ''}">
+    <label>Item<input name="name" required placeholder="ex: Bolsa térmica" value="${esc(x.name)}"></label>
+    <div class="row2 dq"><label>Data<input name="date" type="date" value="${x.date}"></label>
+    <label>Valor (R$)<input name="value" required inputmode="decimal" placeholder="ex: 89,90" value="${x.value === '' ? '' : String(x.value).replace('.', ',')}"></label></div>
+    <label>Observação (opcional)<input name="note" value="${esc(x.note || '')}"></label>
+    <button class="btn primary wide">Salvar</button>
+    ${id ? `<button type="button" class="btn danger wide" data-a="delinv" data-id="${id}">Excluir</button>` : ''}</form>`);
 }
 
 const CALC = { cur: '0', acc: null, op: null, fresh: true, lastOp: null, lastB: null, err: false };
@@ -1093,6 +1180,8 @@ const actions = {
   paysale: d => paySheet(d.ids.split(',')),
   dopay: d => { const now = new Date().toISOString(); S.sales.forEach(s => { if (payIds.includes(s.id)) { s.status = 'paid'; s.method = d.m; s.paidAt = now; } }); save(); closeSheet(); render(); toast('💰 Pagamento acertado!'); },
   period: d => { period = d.v; render(); },
+  newinv: () => invSheet(''), editinv: d => invSheet(d.id),
+  delinv: d => { if (confirm('Excluir este investimento?')) { S.invests = S.invests.filter(v => v.id !== d.id); save(); closeSheet(); render(); } },
   newcust: () => custSheet(''), editcust: d => custSheet(d.id),
   delcust: d => { if (confirm('Excluir este cliente? As vendas dele continuam no histórico.')) { S.customers = S.customers.filter(c => c.id !== d.id); save(); closeSheet(); render(); } },
   sale: d => saleSheet(d.id),
@@ -1102,6 +1191,14 @@ const actions = {
     S.sales = S.sales.filter(x => x.id !== d.id); save(); closeSheet(); render();
   },
   ck: d => { calcKey(d.k); render(); },
+  rdays: d => { rdays = +d.v; render(); },
+  async copyrepor() {
+    const t = reporText();
+    try { await navigator.clipboard.writeText(t); toast('📋 Lista copiada!'); return; } catch (e) {}
+    const ta = document.createElement('textarea'); ta.value = t; ta.style.position = 'fixed'; ta.style.opacity = '0'; document.body.appendChild(ta);
+    ta.focus(); ta.select(); try { ta.setSelectionRange(0, 99999); document.execCommand('copy'); toast('📋 Lista copiada!'); } catch (e2) { toast('Não consegui copiar'); } ta.remove();
+  },
+  async sharerepor() { try { await navigator.share({ title: 'Lista para repor', text: reporText() }); } catch (e) {} },
   xp: d => { xp = d.v; render(); },
   xlsp: d => { xlsP = d.v; render(); },
   xlsx: () => exportXlsx(),
@@ -1147,6 +1244,12 @@ const forms = {
   else { const p = Object.assign({ id: uid(), stock: 0 }, o); S.products.push(p); const q = int(f.stock); if (q > 0) { p.stock = q; logStock(p, q); } }
   save(); closeSheet(); render();
 },
+  inv(f, d) {
+    const o = { name: f.name.trim(), value: r2(num(f.value)), date: f.date || dkey(new Date()), note: (f.note || '').trim() };
+    if (!o.name || !(o.value > 0)) { toast('Preencha o item e o valor'); return; }
+    if (d.id) Object.assign(S.invests.find(v => v.id === d.id), o); else S.invests.push(Object.assign({ id: uid(), at: new Date().toISOString() }, o));
+    save(); closeSheet(); render();
+  },
   cust(f, d) {
     if (d.id) Object.assign(cust(d.id), { name: f.name.trim(), phone: f.phone.trim() }); else S.customers.push({ id: uid(), name: f.name.trim(), phone: f.phone.trim() });
     save(); closeSheet(); render();
@@ -1218,9 +1321,9 @@ window.addEventListener('offline', updatePill);
 
 /* ============ render ============ */
 function render() {
-  const V = { estoque: vEstoque, vender: vVender, pend: vPend, lucro: vLucro, mais: vMais, precos: vPrecos, entradas: vEntradas, extrato: vExtrato, clientes: vClientes, hist: vHist, calc: vCalc, nuvem: vNuvem, backup: vBackup };
+  const V = { estoque: vEstoque, vender: vVender, pend: vPend, lucro: vLucro, mais: vMais, precos: vPrecos, entradas: vEntradas, extrato: vExtrato, repor: vRepor, invest: vInvest, clientes: vClientes, hist: vHist, calc: vCalc, nuvem: vNuvem, backup: vBackup };
   $('#app').innerHTML = V[view]();
-  const nav = ['precos', 'entradas', 'extrato', 'clientes', 'hist', 'calc', 'nuvem', 'backup'].includes(view) ? 'mais' : view;
+  const nav = ['invest', 'repor', 'precos', 'entradas', 'extrato', 'clientes', 'hist', 'calc', 'nuvem', 'backup'].includes(view) ? 'mais' : view;
   document.querySelectorAll('nav button').forEach(b => b.classList.toggle('on', b.dataset.v === nav));
   const n = S.sales.filter(s => s.status === 'pending').length, bd = $('#pbadge');
   bd.hidden = !n; bd.textContent = n;
