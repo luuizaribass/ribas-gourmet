@@ -105,8 +105,12 @@ nav em{position:absolute;top:0;right:22%;background:var(--pink);color:#fff;font-
 label{display:block;font-size:13px;color:var(--pink2);margin:10px 0 0;font-weight:700}
 input,select{display:block;width:100%;margin-top:5px;background:var(--card);border:1.5px solid #5b3329;border-radius:12px;padding:12px;font-size:16px;color:var(--cream)}
 input:focus,select:focus{outline:none;border-color:var(--yellow)}
-input[type=date]{min-height:48px}
-.row2{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+input{min-height:48px}
+.row2{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:10px}
+.row2>*{min-width:0}
+.row2.dq{grid-template-columns:minmax(0,1.7fr) minmax(0,1fr)}
+input[type=date]{-webkit-appearance:none;appearance:none;min-width:0;max-width:100%;width:100%;text-align:left;display:block;line-height:1.2}
+input[type=date]::-webkit-date-and-time-value{text-align:left;margin:0}
 .seg{display:flex;gap:8px;margin-top:10px}
 .seg button{flex:1;border:1.5px solid #5b3329;background:var(--card);border-radius:12px;padding:11px 4px;font-weight:700;font-size:15px}
 .seg button.on{background:var(--yellow);color:var(--bg);border-color:var(--yellow)}
@@ -453,9 +457,9 @@ function stockSheet(id) {
   const log = S.stockLog.filter(e => e.pid === id).sort((a, b) => a.date < b.date ? 1 : a.date > b.date ? -1 : (a.at < b.at ? 1 : -1)).slice(0, 8);
   sheet(`<h2>${esc(p.name)}</h2>
   <p class="muted">Estoque atual: <b style="color:var(--yellow);font-size:20px">${p.stock}</b></p>
-  <div class="row2">
+  <div class="row2 dq">
     <label>Data<input id="sdate" type="date" value="${dkey(new Date())}"></label>
-    <label>Quantas entraram<input id="sq" inputmode="numeric" placeholder="ex: 10"></label>
+    <label>Quantas<input id="sq" inputmode="numeric" placeholder="ex: 10"></label>
   </div>
   <div class="seg"><button data-a="stockq" data-q="5">5</button><button data-a="stockq" data-q="10">10</button><button data-a="stockq" data-q="20">20</button><button data-a="stockq" data-q="50">50</button></div>
   <button class="btn primary wide" data-a="stockapply" data-s="1">Lançar entrada no estoque</button>
