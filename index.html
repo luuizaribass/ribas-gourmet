@@ -135,6 +135,19 @@ input[type=date]{min-height:48px}
 .gh small{color:var(--muted);font-weight:600;font-size:12px}
 .card.tight{padding:10px 12px;margin:6px 0}
 .card.tight h3{font-size:16px}
+.search{margin:8px 0 2px;border-radius:99px;padding:12px 16px}
+.cartcard{border:2px solid var(--yellow)}
+.cartcard .tot{display:flex;justify-content:space-between;align-items:baseline;margin-top:8px;padding-top:8px;border-top:2px solid #5b3329}
+.cartcard .tot b{font-size:24px;color:var(--yellow)}
+.ios{background:#000;border-radius:26px;padding:10px 12px 16px;margin-top:8px;user-select:none;-webkit-user-select:none}
+.ios .disp{color:#fff;text-align:right;font-weight:300;line-height:1.15;min-height:96px;padding:18px 8px 6px;overflow:hidden;white-space:nowrap;display:flex;align-items:flex-end;justify-content:flex-end;font-family:-apple-system,"SF Pro Display",system-ui,sans-serif;font-variant-numeric:tabular-nums}
+.ios .keys{display:grid;grid-template-columns:repeat(4,1fr);gap:10px}
+.ios .k{aspect-ratio:1;border-radius:50%;border:0;font-size:30px;font-weight:400;color:#fff;background:#333;padding:0;font-family:-apple-system,"SF Pro Display",system-ui,sans-serif}
+.ios .k:active{filter:brightness(1.5)}
+.ios .k.f{background:#a5a5a5;color:#000}
+.ios .k.o{background:#ff9f0a;color:#fff;font-size:38px}
+.ios .k.o.on{background:#fff;color:#ff9f0a}
+.ios .k.z{grid-column:span 2;aspect-ratio:auto;border-radius:99px;text-align:left;padding-left:8%}
 .legend{display:flex;gap:14px;font-size:12px;color:var(--muted);margin-top:6px}
 .legend i{display:inline-block;width:10px;height:10px;border-radius:3px;margin-right:5px}
 .banner{background:#5a2a14;border:1px solid var(--orange);color:var(--cream);border-radius:14px;padding:10px 12px;font-size:13px;margin:8px 0}
@@ -148,7 +161,7 @@ input[type=date]{min-height:48px}
 <div id="cartbar"></div>
 <nav>
   <button data-a="tab" data-v="estoque"><span>🍫</span>Estoque</button>
-  <button data-a="tab" data-v="vender"><span>🛍️</span>Vender</button>
+  <button data-a="tab" data-v="vender"><span>🛒</span>Compras</button>
   <button data-a="tab" data-v="pend"><span>⏳</span>Pendentes<em id="pbadge" hidden></em></button>
   <button data-a="tab" data-v="lucro"><span>📈</span>Lucro</button>
   <button data-a="tab" data-v="mais"><span>⚙️</span>Mais</button>
@@ -459,16 +472,26 @@ function logStock(p, qty, date) {
 /* ============ VENDER ============ */
 const cartSubtotal = () => r2(cartLines().reduce((a, l) => a + l.total, 0));
 const cartCount = () => Object.values(cart).reduce((a, q) => a + q, 0);
+let csearch = '';
+const norm = t => String(t || '').normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase().trim();
+function applyFilter() {
+  const t = norm(csearch);
+  document.querySelectorAll('[data-s]').forEach(el => { el.hidden = !!t && !el.dataset.s.includes(t); });
+}
 function vVender() {
-  const byId = {}; cartLines().forEach(l => { byId[l.p.id] = l; });
-  return head('Vender') + `<p class="muted" style="text-align:center;margin:0 0 2px">Toque no + para montar a compra</p>` +
+  const lines = cartLines(), byId = {}; lines.forEach(l => { byId[l.p.id] = l; });
+  const cartCard = lines.length ? `<div class="card cartcard"><h3>🛒 Carrinho</h3>
+    ${lines.map(l => `<div class="line"><div class="l"><b>${esc(short(l.p.name))}</b><br><span class="muted">${l.q} × ${brl(l.p.price)}${l.p.promoGroup && l.p.promoQty > 0 ? ' · promoção ' + l.p.promoQty + ' por ' + brl(l.p.promoPrice) : ''}</span></div><div class="r"><b>${brl(l.total)}</b></div></div>`).join('')}
+    <div class="tot"><span>Total</span><b>${brl(cartSubtotal())}</b></div></div>` : '';
+  return head('Compras') + cartCard +
+    `<input id="fsearch" class="search" type="search" placeholder="🔎 Buscar sabor ou trufa…" value="${esc(csearch)}" autocomplete="off">` +
     groups().map(([line, items]) => {
       const q = items.reduce((a, p) => a + (cart[p.id] || 0), 0), t = items.reduce((a, p) => a + (byId[p.id] ? byId[p.id].total : 0), 0);
       const promo = items.find(p => p.promoQty > 0 && p.promoPrice > 0 && p.promoGroup);
       const extra = q ? `<b style="color:var(--yellow)">${q} · ${brl(t)}</b>` : (promo ? `${promo.promoQty} por ${brl(promo.promoPrice)}` : '');
       return gh('vender', line, extra) + (isOpen('vender:' + line) ? items.map(p => {
         const n = cart[p.id] || 0;
-        return `<div class="card tight sale ${n ? 'on' : ''}">
+        return `<div class="card tight sale ${n ? 'on' : ''}" data-s="${esc(norm(p.name))}">
           <div class="pinfo"><h3>${esc(flavorOf(p))}</h3>
             <div class="chips" style="margin-top:4px"><span class="chip">${brl(p.price)}</span><span class="chip dim">${p.stock} em estoque</span></div></div>
           <div class="step">
@@ -486,8 +509,8 @@ function renderCartBar() {
 }
 function checkout() {
   fs = { status: 'paid', method: 'Pix' };
-  sheet(`<h2>Finalizar venda</h2>
-  <div class="muted">${Object.keys(cart).map(id => prod(id) ? cart[id] + '× ' + short(prod(id).name) : '').join(', ')}</div>
+  sheet(`<h2>Fechar compra</h2>
+  ${cartLines().map(l => `<div class="line"><span>${l.q}× ${esc(short(l.p.name))}</span><b>${brl(l.total)}</b></div>`).join('')}
   <label>Nome do cliente
     <input id="fname" list="clist" autocomplete="off" autocapitalize="words" placeholder="ex: Ana"></label>
   <datalist id="clist">${S.customers.map(c => `<option value="${esc(c.name)}">`).join('')}</datalist>
@@ -508,7 +531,7 @@ function checkout() {
   <div id="cashrow" hidden><label>Valor recebido (R$)<input id="frec" inputmode="decimal" placeholder="0,00"></label>
     <div class="troco" id="ftroco"></div></div>
   <div class="totalrow"><span>Total</span><b id="ftotal">${brl(cartSubtotal())}</b></div>
-  <button class="btn primary wide" data-a="confirmsale">Lançar venda</button>`);
+  <button class="btn primary wide" data-a="confirmsale">Fechar compra</button>`);
 }
 function updateCheckout() {
   const sub = cartSubtotal(), disc = Math.min(num($('#fdisc') && $('#fdisc').value), sub);
@@ -653,7 +676,7 @@ function vMais() {
   const nuvem = !cloudOn ? 'Ainda não ligado' : !META.uid ? 'Entre para guardar seus dados' : pillParts()[1].replace('☁️ ', '');
   return head('Mais') + M('precos', '💰', 'Preços e custos', 'Quanto você paga e quanto vende') + M('entradas', '📦', 'Entradas de estoque', `${S.stockLog.length} lançamentos`) +
     M('clientes', '👩', 'Clientes', `${S.customers.length} cadastrados`) + M('hist', '🧾', 'Histórico de vendas', `${S.sales.length} vendas`) +
-    M('nuvem', '☁️', 'Banco de dados', nuvem) + M('calc', '🧮', 'Calculadora', 'Preço ideal e troco') + M('backup', '💾', 'Backup e restaurar', 'Cópia extra dos dados');
+    M('nuvem', '☁️', 'Banco de dados', nuvem) + M('calc', '🧮', 'Calculadora', 'Igual à do iPhone') + M('backup', '💾', 'Backup e restaurar', 'Cópia extra dos dados');
 }
 function vPrecos() {
   return sub('', 'Preços') + `<p class="muted" style="text-align:center;margin:0 0 2px">Paguei = quanto você pagou na Cacau Show. Vendo = preço pro cliente. Se mudar o custo, vale só para as vendas novas: as antigas guardam o que você pagou na época.</p>` +
@@ -701,31 +724,57 @@ function saleSheet(id) {
     ${s.status === 'pending' ? `<button class="btn yellow wide" data-a="paysale" data-ids="${s.id}">Acertar pagamento</button>` : ''}
     <button class="btn danger wide" data-a="delsale" data-id="${s.id}">Excluir venda (devolve ao estoque)</button>`);
 }
-function vCalc() {
-  return sub('', 'Calculadora') + `<div class="card" id="calc1"><h3>💰 Preço ideal</h3>
-    <label>Custo total dos ingredientes (R$)<input id="c1" inputmode="decimal" placeholder="ex: 60"></label>
-    <div class="row2"><label>Quantas unidades rende<input id="c2" inputmode="numeric" placeholder="ex: 20"></label>
-    <label>Embalagem por unidade (R$)<input id="c3" inputmode="decimal" placeholder="ex: 0,50"></label></div>
-    <div class="row2"><label>Margem desejada (%)<input id="c4" inputmode="numeric" placeholder="ex: 50"></label>
-    <label>Seu preço de venda (R$)<input id="c5" inputmode="decimal" placeholder="opcional"></label></div>
-    <div id="cres" class="muted" style="margin-top:12px">Preencha os campos acima.</div></div>
-  <div class="card" id="calc2"><h3>🪙 Troco</h3>
-    <div class="row2"><label>Valor da compra (R$)<input id="t1" inputmode="decimal"></label><label>Cliente deu (R$)<input id="t2" inputmode="decimal"></label></div>
-    <div id="tres" class="troco" style="font-size:20px"></div></div>`;
+const CALC = { cur: '0', acc: null, op: null, fresh: true, lastOp: null, lastB: null, err: false };
+const cNum = () => parseFloat(CALC.cur);
+function cApply(a, b, o) { return o === '+' ? a + b : o === '−' ? a - b : o === '×' ? a * b : (b === 0 ? NaN : a / b); }
+function cStr(n) {
+  if (!isFinite(n)) { CALC.err = true; return '0'; }
+  n = parseFloat(n.toPrecision(10));
+  let t = String(n); if (/e/i.test(t)) t = n.toExponential(5).replace(/\.?0+e/, 'e');
+  return t;
 }
-function calc() {
-  const c1 = num($('#c1').value), c2 = num($('#c2').value), c3 = num($('#c3').value), m = num($('#c4').value), c5 = num($('#c5').value);
-  let h = '';
-  if (c1 > 0 && c2 > 0) {
-    const cu = c1 / c2 + c3; h += `Custo por unidade: <b style="color:var(--cream)">${brl(cu)}</b><br>`;
-    if (m > 0 && m < 100) { const p = cu / (1 - m / 100); h += `Preço sugerido: <b style="color:var(--yellow);font-size:22px">${brl(p)}</b><br>Lucro por unidade: <b style="color:var(--green)">${brl(p - cu)}</b><br>`; }
-    if (c5 > 0) h += `No seu preço: lucro de <b style="color:var(--green)">${brl(c5 - cu)}</b> por unidade (margem de ${((c5 - cu) / c5 * 100).toFixed(0)}%)`;
+function cShow() {
+  if (CALC.err) return 'Erro';
+  const t = CALC.cur, neg = t[0] === '-', body = neg ? t.slice(1) : t;
+  if (/e/i.test(body)) return t.replace('.', ',');
+  const [i, f] = body.split('.');
+  return (neg ? '-' : '') + i.replace(/\B(?=(\d{3})+(?!\d))/g, '.') + (f !== undefined ? ',' + f : '');
+}
+function calcKey(k) {
+  const C = CALC;
+  if (C.err && k !== 'AC' && k !== 'C') { C.err = false; C.cur = '0'; C.acc = C.op = null; C.fresh = true; }
+  if (/^\d$/.test(k)) {
+    if (C.fresh) { C.cur = k; C.fresh = false; }
+    else if (C.cur === '0') C.cur = k;
+    else if (C.cur.replace(/[-.]/g, '').length < 9) C.cur += k;
+  } else if (k === ',') {
+    if (C.fresh) { C.cur = '0.'; C.fresh = false; } else if (!C.cur.includes('.')) C.cur += '.';
+  } else if (k === 'AC' || k === 'C') {
+    if (k === 'C') { C.cur = '0'; C.fresh = false; } else { C.cur = '0'; C.acc = C.op = C.lastOp = C.lastB = null; C.fresh = true; C.err = false; }
+  } else if (k === 'back') {
+    if (!C.fresh) { C.cur = C.cur.length > 1 && !(C.cur.length === 2 && C.cur[0] === '-') ? C.cur.slice(0, -1) : '0'; }
+  } else if (k === '±') {
+    if (C.cur !== '0') C.cur = C.cur[0] === '-' ? C.cur.slice(1) : '-' + C.cur;
+  } else if (k === '%') {
+    let v = cNum(); v = (C.op === '+' || C.op === '−') && C.acc !== null ? C.acc * v / 100 : v / 100; C.cur = cStr(v);
+  } else if (k === '=') {
+    if (C.op) { const b = C.fresh ? C.acc : cNum(); C.lastOp = C.op; C.lastB = b; C.cur = cStr(cApply(C.acc, b, C.op)); C.acc = null; C.op = null; C.fresh = true; }
+    else if (C.lastOp) { C.cur = cStr(cApply(cNum(), C.lastB, C.lastOp)); C.fresh = true; }
+  } else {
+    if (C.op && !C.fresh) { C.acc = cApply(C.acc, cNum(), C.op); C.cur = cStr(C.acc); } else C.acc = cNum();
+    C.op = k; C.fresh = true; C.lastOp = null;
   }
-  $('#cres').innerHTML = h || 'Preencha os campos acima.';
 }
-function troco() {
-  const a = num($('#t1').value), b = num($('#t2').value);
-  $('#tres').textContent = (a > 0 && b > 0) ? (b >= a ? 'Troco: ' + brl(b - a) : 'Faltam ' + brl(a - b)) : '';
+function vCalc() {
+  const C = CALC, t = cShow(), n = t.length, fz = n <= 6 ? 76 : n <= 7 ? 66 : n <= 8 ? 58 : n <= 9 ? 52 : 44;
+  const K = (k, cls, label) => `<button class="k ${cls || ''} ${cls === 'o' && C.op === k && C.fresh ? 'on' : ''}" data-a="ck" data-k="${k}">${label || k}</button>`;
+  return `<button class="back" data-a="tab" data-v="mais">‹ Mais</button><div class="ios"><div class="disp" data-a="ck" data-k="back" style="font-size:${fz}px">${esc(t)}</div><div class="keys">
+    ${K(C.cur !== '0' || C.err ? 'C' : 'AC', 'f')}${K('±', 'f')}${K('%', 'f')}${K('÷', 'o')}
+    ${K('7')}${K('8')}${K('9')}${K('×', 'o')}
+    ${K('4')}${K('5')}${K('6')}${K('−', 'o')}
+    ${K('1')}${K('2')}${K('3')}${K('+', 'o')}
+    ${K('0', 'z')}${K(',')}${K('=', 'o')}
+  </div></div><p class="muted" style="text-align:center;margin-top:10px">Toque no número do visor para apagar o último dígito.</p>`;
 }
 function vNuvem() {
   let body;
@@ -809,6 +858,7 @@ const actions = {
     const s = S.sales.find(x => x.id === d.id); s.items.forEach(i => { const p = prod(i.pid); if (p) p.stock += i.qty; });
     S.sales = S.sales.filter(x => x.id !== d.id); save(); closeSheet(); render();
   },
+  ck: d => { calcKey(d.k); render(); },
   syncnow: () => syncNow(true),
   resetcfg: () => { META.cfgUrl = META.cfgKey = ''; metaSave(); applyCfg(); render(); },
   async signup() {
@@ -860,8 +910,7 @@ document.addEventListener('input', e => {
   const id = e.target.id;
   if (id === 'fdisc' || id === 'frec') updateCheckout();
   if (id === 'fname') { const v = e.target.value.trim().toLowerCase(); $('#newc').hidden = !v || S.customers.some(c => c.name.toLowerCase() === v); }
-  if (/^c[1-5]$/.test(id)) calc();
-  if (id === 't1' || id === 't2') troco();
+  if (id === 'fsearch') { csearch = e.target.value; applyFilter(); }
   if (e.target.dataset && e.target.dataset.pf) {
     const card = e.target.closest('[data-card]'), p = prod(card.dataset.card);
     p.cost = num(card.querySelector('[data-pf=cost]').value); p.price = num(card.querySelector('[data-pf=price]').value);
@@ -894,6 +943,7 @@ function render() {
   const n = S.sales.filter(s => s.status === 'pending').length, bd = $('#pbadge');
   bd.hidden = !n; bd.textContent = n;
   renderCartBar();
+  if (view === 'vender') applyFilter();
 }
 render();
 syncNow();
