@@ -19,6 +19,7 @@
   --green:#5fd39a; --red:#ff6b6b; --muted:#c9a89a;
 }
 *{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+[hidden]{display:none !important}
 html,body{margin:0;background:var(--bg);color:var(--cream);
   font-family:ui-rounded,-apple-system,BlinkMacSystemFont,"Segoe UI",system-ui,sans-serif;font-size:16px}
 body{min-height:100dvh;padding-top:env(safe-area-inset-top);-webkit-text-size-adjust:100%}
@@ -183,13 +184,13 @@ function defaults() {
     { id: uid(), line, flavor, name: line + ' ' + flavor, price, cost, stock: 0, min: 3, promoQty: 0, promoPrice: 0, promoGroup: '' }, extra || {})));
   L('Tabletinho 5g', 2, [['Ao leite', 1.12], ['Branca', 1.12], ['Café', 1.12], ['Menta', 1.12], ['55%', 1.12], ['70%', 1.12]], { promoQty: 3, promoPrice: 5, promoGroup: 'tabletinho' });
   L('Trufa Bless', 8.5, [['Ao leite', 5.6], ['Branca', 5.6], ['Morango', 5.6], ['Pistache', 6.39]]);
-  L('Trufa Dreams', 8, [['Cereja ao licor', 6.49], ['Marula', 6.49], ['Petit Gâteau', 0]]);
+  L('Trufa Dreams', 8, [['Cereja ao licor', 6.49], ['Marula', 6.49], ['Petit Gâteau', 6.49]]);
   L('Trufa Mil-folhas', 7.5, [['Tradicional', 6.49], ['Avelã', 6.49]]);
   L('Trufa Lanut', 7.5, [['Avelã', 6.49], ['Pistache', 6.49]]);
-  L('Trufa Lacreme', 5.5, [['Ao leite', 3.79], ['Branca', 3.79], ['Avelã', 3.79], ['70%', 3.79], ['Kids', 0], ['Pistache', 0]]);
-  L('Trufa Tradicional', 6.5, [['Ao leite', 0], ['Branca', 0], ['Mezzo', 5.29]]);
-  L('Trufa Variadas', 7, [['Torta de limão', 5.29], ['Maracujá', 5.29], ['Morango', 5.29], ['Coco', 5.29], ['55%', 5.29], ['Paçoca', 0], ['Menta', 0], ['Speculoos', 0]]);
-  return { v: 4, products: out, customers: [], sales: [], stockLog: [], lastBackup: null };
+  L('Trufa Lacreme', 5.5, [['Ao leite', 3.79], ['Branca', 3.79], ['Avelã', 3.79], ['70%', 3.79], ['Kids', 3.79], ['Pistache', 3.79]]);
+  L('Trufa Tradicional', 6.5, [['Ao leite', 5.29], ['Branca', 5.29], ['Mezzo', 5.29]]);
+  L('Trufa Variadas', 7, [['Torta de limão', 5.29], ['Maracujá', 5.29], ['Morango', 5.29], ['Coco', 5.29], ['55%', 5.29], ['Paçoca', 5.29], ['Menta', 5.29], ['Speculoos', 5.29]]);
+  return { v: 5, products: out, customers: [], sales: [], stockLog: [], lastBackup: null };
 }
 function migrate(st) {
   if ((st.v || 0) < 3) {
@@ -199,6 +200,11 @@ function migrate(st) {
   if (st.v < 4) {
     st.products.forEach(p => { if (p.line === 'Trufa Dreams' && p.flavor === 'Petit Gâteau' && p.price === 7.5) p.price = 8; });
     st.v = 4;
+  }
+  if (st.v < 5) {
+    const C = { 'Trufa Dreams|Petit Gâteau': 6.49, 'Trufa Lacreme|Kids': 3.79, 'Trufa Lacreme|Pistache': 3.79, 'Trufa Tradicional|Ao leite': 5.29, 'Trufa Tradicional|Branca': 5.29, 'Trufa Variadas|Paçoca': 5.29, 'Trufa Variadas|Menta': 5.29, 'Trufa Variadas|Speculoos': 5.29 };
+    st.products.forEach(p => { const c = C[p.line + '|' + p.flavor]; if (c && !p.cost) p.cost = c; });
+    st.v = 5;
   }
   return st;
 }
