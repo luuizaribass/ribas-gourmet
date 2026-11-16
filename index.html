@@ -724,7 +724,8 @@ function chartSVG(bk) {
 }
 function vLucro() {
   const sales = S.sales.filter(s => inPeriod(s.date));
-  const rev = sales.reduce((a, s) => a + s.total, 0), cost = sales.reduce((a, s) => a + s.cost, 0), profit = rev - cost;
+  const rev = sales.reduce((a, s) => a + s.total, 0), cost = sales.reduce((a, s) => a + s.cost, 0), profitV = rev - cost;
+  const invP = S.invests.filter(v => inPeriod(v.date + 'T12:00:00')), inv = r2(invP.reduce((a, v) => a + v.value, 0)), profit = profitV - inv;
   const recebido = sales.filter(s => s.status === 'paid').reduce((a, s) => a + s.total, 0), areceber = rev - recebido;
   const units = sales.filter(s => !s.own).reduce((a, s) => a + s.items.reduce((b, i) => b + i.qty, 0), 0);
   const b = buckets(sales); sales.forEach(s => { const bb = b.out.find(x => x.key === b.keyOf(s.date)); if (bb) { bb.rev += s.total; bb.profit += s.total - s.cost; } });
@@ -736,7 +737,7 @@ function vLucro() {
   const ownCost = r2(sales.filter(s => s.own).reduce((a, s) => a + s.cost, 0));
   const P = (v, t) => `<button class="${period === v ? 'on' : ''}" data-a="period" data-v="${v}">${t}</button>`;
   return head('Lucro') + `<div class="chipsrow">${P('7', '7 dias')}${P('30', '30 dias')}${P('month', 'Este mês')}${P('all', 'Tudo')}</div>
-  <div class="hero"><span>Meu lucro completo (o que vendi − o que paguei)</span><b>${brl(profit)}</b><span>${rev > 0 ? 'Margem de ' + Math.round(profit / rev * 100) + '%' : 'Sem vendas nesse período'}</span></div>
+  <div class="hero"><span>${inv > 0 ? 'Meu lucro depois dos investimentos' : 'Meu lucro completo (o que vendi − o que paguei)'}</span><b>${brl(profit)}</b><span>${inv > 0 ? 'Vendas ' + brl(profitV) + ' − investimentos ' + brl(inv) : rev > 0 ? 'Margem de ' + Math.round(profit / rev * 100) + '%' : 'Sem vendas nesse período'}</span></div>
   <div class="stats">
     <div class="stat"><b>${brl(rev)}</b><span>vendi</span></div>
     <div class="stat"><b>${brl(cost)}</b><span>paguei</span></div>
@@ -746,6 +747,7 @@ function vLucro() {
     <div class="stat"><b style="color:var(--green)">${brl(recebido)}</b><span>já recebi</span></div>
     <div class="stat ${areceber ? 'warn' : ''}"><b>${brl(areceber)}</b><span>ainda vou receber</span></div>
   </div>
+  ${inv > 0 ? `<div class="card" data-a="tab" data-v="invest"><b>🧰 Investimentos: ${brl(inv)}</b><p class="muted" style="margin:4px 0 0">${invP.map(v => esc(v.name)).join(' · ')}. Já descontado do lucro acima. Toque para ver.</p></div>` : ''}
   ${ownCost > 0 ? `<div class="card"><b>🙋🏻‍♀️ Peguei pra mim: ${brl(ownCost)}</b><p class="muted" style="margin:4px 0 0">Só o que paguei nas trufas, sem lucro. Já está descontado do meu lucro acima.</p></div>` : ''}
   ${semCusto ? `<div class="banner">💡 ${semCusto} ${semCusto > 1 ? 'sabores estão' : 'sabor está'} sem o valor que você paga, então o lucro deles aparece maior que o real. Preencha em Mais → Preços e custos.</div>` : ''}
   <div class="card"><h3>Quanto vendi e quanto lucrei</h3>${sales.length ? chartSVG(b.out) : '<div class="empty">Sem vendas nesse período</div>'}
@@ -965,10 +967,10 @@ function buildReport(p) {
   const now = new Date();
   const invs = S.invests.filter(v => inRange(Date.parse(v.date + 'T12:00:00'), p)).sort((a, b) => a.date < b.date ? -1 : 1);
   const resumo = { name: 'Resumo', widths: [34, 22], rows: [[B('Ribas Gourmet')], ['Período', PL[p]], ['Gerado em', fmtDMY(now) + ' ' + fmtHM(now)], [],
-    [B('Vendi'), MB(rev)], [B('Paguei (custo dos produtos)'), MB(cost)], [B('Lucro'), MB(rev - cost)], ['   (o lucro já desconta o que peguei pra mim)'],
+    [B('Vendi'), MB(rev)], [B('Paguei (custo dos produtos)'), MB(cost)], [B('Lucro das vendas'), MB(rev - cost)], ['   (o lucro já desconta o que peguei pra mim)'],
     ['Peguei pra mim (só custo)', M(ownCost)], ['Já recebi', M(recebido)], ['Ainda vou receber', M(areceber)], [],
     ['Número de vendas', sales.filter(x => !x.own).length], ['Unidades vendidas', units], [],
-    [B('Investimentos no período'), MB(invs.reduce((a, v) => a + v.value, 0))]] };
+    [B('Investimentos no período'), MB(invs.reduce((a, v) => a + v.value, 0))], [B('Lucro depois dos investimentos'), MB(rev - cost - invs.reduce((a, v) => a + v.value, 0))]] };
   const vr = [H(['Data', 'Hora', 'Cliente', 'Itens', 'Descrição', 'Vendi', 'Paguei', 'Lucro', 'Pagamento', 'Situação'])];
   sales.forEach(x => vr.push([fmtDMY(x.date), fmtHM(x.date), x.customerName || '', itemsText(x), x.desc || '', M(x.total), M(x.cost), M(x.total - x.cost), x.status === 'paid' && !x.own ? x.method : '', sit(x)]));
   vr.push(['TOTAL', '', '', '', '', MB(rev), MB(cost), MB(rev - cost)]);
@@ -1078,7 +1080,7 @@ function vInvest() {
     <div class="line"><span>Lucro das vendas (tudo)</span><b>${brl(lucro)}</b></div>
     <div class="line"><span>Investimentos</span><b>− ${brl(tot)}</b></div>
     <div class="line"><span>${saldo >= 0 ? 'Sobrou' : 'Falta recuperar'}</span><b style="color:var(${saldo >= 0 ? '--green' : '--red'})">${brl(Math.abs(saldo))}</b></div>
-    <p class="muted" style="margin:8px 0 0">Aqui é só uma comparação. O “Lucro” continua sendo só o que vendi − o que paguei nas trufas.</p></div>` : ''}
+    <p class="muted" style="margin:8px 0 0">O investimento também é descontado na aba Lucro (no período escolhido). O que você paga nas trufas já entra no custo de cada venda.</p></div>` : ''}
   ${list.length ? list.map(x => `<div class="card prod" data-a="editinv" data-id="${x.id}"><div class="pinfo"><h3>${esc(x.name)}</h3><p class="sub">${fmtD(x.date)}${x.note ? ' · ' + esc(x.note) : ''}</p></div><b style="font-size:18px">${brl(x.value)}</b></div>`).join('')
     : '<div class="empty">Lance aqui o que você comprou para o negócio: bolsa térmica, embalagens, assinatura do Claude Pro…</div>'}`;
 }
