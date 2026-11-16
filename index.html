@@ -134,6 +134,8 @@ input[type=date]::-webkit-date-and-time-value{text-align:left;margin:0}
 .chipsrow button.on{background:var(--pink);color:#fff}
 .menu{display:flex;align-items:center;gap:12px;width:100%;text-align:left;border:0;cursor:pointer}
 .menu span.ic{font-size:26px}
+.ntext{display:block;width:100%;min-height:55vh;margin-top:8px;background:var(--card);border:1.5px solid #5b3329;border-radius:14px;padding:14px;font-size:17px;line-height:1.45;color:var(--cream);resize:none}
+.noteh{display:flex;gap:8px;justify-content:flex-end;margin:4px 0}.noteh .btn{width:auto}
 #menulist .menu{-webkit-touch-callout:none;-webkit-user-select:none;user-select:none;position:relative;transition:box-shadow .15s}
 .menu .grip{margin-left:auto;color:var(--muted);font-size:20px;opacity:.6}
 .menu.dragging{z-index:5;box-shadow:0 10px 28px rgba(0,0,0,.55);outline:2px solid var(--pink);transition:none}
@@ -211,7 +213,7 @@ function defaults() {
   L('Trufa Lacreme', 5.5, [['Ao leite', 3.79], ['Branca', 3.79], ['Avelã', 3.79], ['70%', 3.79], ['Kids', 3.79], ['Pistache', 3.79]]);
   L('Trufa Tradicional', 6.5, [['Ao leite', 5.29], ['Branca', 5.29], ['Mezzo', 5.29]]);
   L('Trufa Variadas', 7, [['Torta de limão', 5.29], ['Maracujá', 5.29], ['Morango', 5.29], ['Coco', 5.29], ['55%', 5.29], ['Paçoca', 5.29], ['Menta', 5.29], ['Speculoos', 5.29]]);
-  return { v: 5, products: out, customers: [], sales: [], stockLog: [], invests: [], lastBackup: null };
+  return { v: 5, products: out, customers: [], sales: [], stockLog: [], invests: [], notes: [], lastBackup: null };
 }
 function migrate(st) {
   if ((st.v || 0) < 3) {
@@ -228,6 +230,7 @@ function migrate(st) {
     st.v = 5;
   }
   if (!Array.isArray(st.invests)) st.invests = [];
+  if (!Array.isArray(st.notes)) st.notes = [];
   return st;
 }
 function load() {
@@ -757,7 +760,7 @@ function vMais() {
   const M = (v, ic, t, s) => [v, `<button class="card menu" data-a="tab" data-v="${v}" data-mk="${v}"><span class="ic">${ic}</span><div><b>${t}</b><small>${s}</small></div><span class="grip">⠿</span></button>`];
   const nuvem = !cloudOn ? 'Ainda não ligado' : !META.uid ? 'Entre para guardar seus dados' : pillParts()[1].replace('☁️ ', '');
   const items = [M('repor', '🔔', 'O que repor', reporSub()), M('precos', '💰', 'Preços e custos', 'Quanto você paga e quanto vende'), M('entradas', '📦', 'Entradas de estoque', `${S.stockLog.length} lançamentos`),
-    M('extrato', '📒', 'Extrato', 'Tudo que entrou e saiu de produtos'), M('dados', '🏆', 'Mais vendidos', 'O que os clientes mais gostam'), M('invest', '🧰', 'Investimentos', S.invests.length ? brl(invTotal()) + ' investidos' : 'Bolsa térmica, embalagens…'),
+    M('extrato', '📒', 'Extrato', 'Tudo que entrou e saiu de produtos'), M('dados', '🏆', 'Mais vendidos', 'O que os clientes mais gostam'), M('notas', '📝', 'Notas', S.notes.length ? S.notes.length + (S.notes.length > 1 ? ' notas' : ' nota') : 'Seu bloco de notas'), M('invest', '🧰', 'Investimentos', S.invests.length ? brl(invTotal()) + ' investidos' : 'Bolsa térmica, embalagens…'),
     M('clientes', '👩', 'Clientes', `${S.customers.length} cadastrados`), M('hist', '🧾', 'Histórico de vendas', `${S.sales.length} vendas`),
     M('nuvem', '☁️', 'Banco de dados', nuvem), M('calc', '🧮', 'Calculadora', 'Igual à do iPhone'), M('backup', '💾', 'Backup e restaurar', 'Cópia extra dos dados')];
   const ord = Array.isArray(S.menuOrder) ? S.menuOrder : [], pos = k => { const i = ord.indexOf(k); return i < 0 ? 999 : i; };
@@ -1125,6 +1128,31 @@ function vDados() {
   ${parados.length ? `<div class="card"><h3>Não saíram nesse período</h3><p class="muted" style="margin:0">${parados.map(q => esc(short(q.name))).join(' · ')}</p></div>` : ''}`);
 }
 
+/* ---------- Bloco de notas ---------- */
+let nq = '', curNote = null, noteTimer = 0;
+const noteTitle = n => (n.text.split('\n').find(l => l.trim()) || 'Nota vazia').trim();
+const noteRest = n => { const ls = n.text.split('\n').map(l => l.trim()).filter(Boolean); return ls.slice(1).join(' · '); };
+function vNotas() {
+  const q = nq.trim().toLowerCase();
+  const list = S.notes.filter(n => !q || n.text.toLowerCase().includes(q)).sort((a, b) => (b.pin ? 1 : 0) - (a.pin ? 1 : 0) || (a.upd < b.upd ? 1 : -1));
+  return sub('', 'Notas') + `<button class="btn wide primary" data-a="newnote" style="margin-top:0">+ Nova nota</button>
+  ${S.notes.length > 3 ? `<input id="nsearch" type="search" placeholder="🔍 Buscar nas notas" value="${esc(nq)}" autocomplete="off">` : ''}
+  <div id="nlist">${list.length ? list.map(n => `<div class="card tight" data-a="opennote" data-id="${n.id}"><div class="line" style="border:0;padding:0"><b>${n.pin ? '📌 ' : ''}${esc(noteTitle(n))}</b><span class="muted">${fmtD(dkey(n.upd))}</span></div>
+    ${noteRest(n) ? `<p class="muted" style="margin:4px 0 0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${esc(noteRest(n))}</p>` : ''}</div>`).join('')
+    : `<div class="empty">${S.notes.length ? 'Nenhuma nota encontrada.' : 'Anote o que quiser: lembretes, pedidos, ideias, contas…'}</div>`}</div>`;
+}
+function vNota() {
+  const n = S.notes.find(x => x.id === curNote); if (!n) { view = 'notas'; return vNotas(); }
+  return `<button class="back" data-a="noteback">‹ Notas</button><div class="noteh"><button class="btn small ${n.pin ? 'primary' : ''}" data-a="notepin">${n.pin ? '📌 Fixada' : '📌 Fixar'}</button><button class="btn small danger" data-a="notedel">Excluir</button></div>
+  <textarea id="ntext" class="ntext" placeholder="Escreva aqui…" autocapitalize="sentences">${esc(n.text)}</textarea>
+  <p class="muted" style="text-align:center">Salva sozinho enquanto você escreve · ${fmtD(dkey(n.at))}</p>`;
+}
+function noteEnd() {
+  clearTimeout(noteTimer); const n = S.notes.find(x => x.id === curNote);
+  if (n) { if (!n.text.trim()) S.notes = S.notes.filter(x => x !== n); save(); }
+  curNote = null;
+}
+
 const CALC = { cur: '0', acc: null, op: null, fresh: true, lastOp: null, lastB: null, err: false };
 const cNum = () => parseFloat(CALC.cur);
 function cApply(a, b, o) { return o === '+' ? a + b : o === '−' ? a - b : o === '×' ? a * b : (b === 0 ? NaN : a / b); }
@@ -1230,7 +1258,7 @@ async function exportBackup() {
 /* ============ ações ============ */
 const actions = {
   toggle: d => { col[d.k] = !col[d.k]; render(); },
-  tab: d => { view = d.v; window.scrollTo(0, 0); render(); },
+  tab: d => { if (view === 'nota') noteEnd(); view = d.v; window.scrollTo(0, 0); render(); },
   close: () => closeSheet(),
   newprod: () => prodSheet(''), editprod: d => prodSheet(d.id),
   delprod: d => { if (confirm('Excluir este produto? As vendas antigas continuam no histórico.')) { S.products = S.products.filter(p => p.id !== d.id); delete cart[d.id]; save(); closeSheet(); render(); } },
@@ -1283,6 +1311,11 @@ const actions = {
   async sharerepor() { try { await navigator.share({ title: 'Lista para repor', text: reporText() }); } catch (e) {} },
   xp: d => { xp = d.v; render(); },
   dp: d => { dp = d.v; render(); },
+  newnote: () => { const n = { id: uid(), text: '', at: new Date().toISOString(), upd: new Date().toISOString(), pin: false }; S.notes.push(n); curNote = n.id; view = 'nota'; window.scrollTo(0, 0); render(); setTimeout(() => { const t = $('#ntext'); t && t.focus(); }, 60); },
+  opennote: d => { curNote = d.id; view = 'nota'; window.scrollTo(0, 0); render(); },
+  noteback: () => { noteEnd(); view = 'notas'; render(); },
+  notepin: () => { const n = S.notes.find(x => x.id === curNote); if (n) { n.pin = !n.pin; save(); render(); } },
+  notedel: () => { if (confirm('Excluir esta nota?')) { S.notes = S.notes.filter(x => x.id !== curNote); curNote = null; save(); view = 'notas'; render(); } },
   xlsp: d => { xlsP = d.v; render(); },
   xlsx: () => exportXlsx(),
   cancelsale: d => {
@@ -1378,6 +1411,10 @@ document.addEventListener('input', e => {
   const id = e.target.id;
   if (id === 'fdisc' || id === 'frec') updateCheckout();
   if (id === 'fname') { const v = e.target.value.trim().toLowerCase(); $('#newc').hidden = !v || S.customers.some(c => c.name.toLowerCase() === v); }
+  if (id === 'ntext') {
+    const n = S.notes.find(x => x.id === curNote); if (n) { n.text = e.target.value; n.upd = new Date().toISOString(); clearTimeout(noteTimer); noteTimer = setTimeout(save, 500); }
+  }
+  if (id === 'nsearch') { nq = e.target.value; const pos = e.target.selectionStart; render(); const i = $('#nsearch'); if (i) { i.focus(); try { i.setSelectionRange(pos, pos); } catch (x) {} } }
   if (id === 'fsearch') { csearch = e.target.value; applyFilter(); }
   if (e.target.dataset && e.target.dataset.pf) {
     const card = e.target.closest('[data-card]'), p = prod(card.dataset.card);
@@ -1404,9 +1441,9 @@ window.addEventListener('offline', updatePill);
 
 /* ============ render ============ */
 function render() {
-  const V = { estoque: vEstoque, vender: vVender, pend: vPend, lucro: vLucro, mais: vMais, precos: vPrecos, entradas: vEntradas, extrato: vExtrato, repor: vRepor, dados: vDados, invest: vInvest, clientes: vClientes, hist: vHist, calc: vCalc, nuvem: vNuvem, backup: vBackup };
+  const V = { estoque: vEstoque, vender: vVender, pend: vPend, lucro: vLucro, mais: vMais, precos: vPrecos, entradas: vEntradas, extrato: vExtrato, repor: vRepor, dados: vDados, notas: vNotas, nota: vNota, invest: vInvest, clientes: vClientes, hist: vHist, calc: vCalc, nuvem: vNuvem, backup: vBackup };
   $('#app').innerHTML = V[view]();
-  const nav = ['dados', 'invest', 'repor', 'precos', 'entradas', 'extrato', 'clientes', 'hist', 'calc', 'nuvem', 'backup'].includes(view) ? 'mais' : view;
+  const nav = ['notas', 'nota', 'dados', 'invest', 'repor', 'precos', 'entradas', 'extrato', 'clientes', 'hist', 'calc', 'nuvem', 'backup'].includes(view) ? 'mais' : view;
   document.querySelectorAll('nav button').forEach(b => b.classList.toggle('on', b.dataset.v === nav));
   const n = S.sales.filter(s => s.status === 'pending').length, bd = $('#pbadge');
   bd.hidden = !n; bd.textContent = n;
