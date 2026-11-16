@@ -475,6 +475,7 @@ function logStock(p, qty, date) {
 
 /* ============ VENDER ============ */
 const cartSubtotal = () => r2(cartLines().reduce((a, l) => a + l.total, 0));
+const cartCost = () => r2(cartLines().reduce((a, l) => a + l.q * (l.p.cost || 0), 0));
 const cartCount = () => Object.values(cart).reduce((a, q) => a + q, 0);
 let csearch = '';
 const norm = t => String(t || '').normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase().trim();
@@ -515,13 +516,14 @@ function checkout() {
   fs = { status: 'paid', method: 'Pix' };
   sheet(`<h2>Fechar compra</h2>
   ${cartLines().map(l => `<div class="line"><span>${l.q}× ${esc(short(l.p.name))}</span><b>${brl(l.total)}</b></div>`).join('')}
-  <label>Nome do cliente
+  <label id="fnamel">Nome do cliente
     <input id="fname" list="clist" autocomplete="off" autocapitalize="words" placeholder="ex: Ana"></label>
   <datalist id="clist">${S.customers.map(c => `<option value="${esc(c.name)}">`).join('')}</datalist>
   <div id="newc" hidden><input id="fnp" placeholder="WhatsApp (opcional, para cobrar depois)" inputmode="tel"></div>
   <div class="seg" id="sstatus">
     <button class="on" data-a="setstatus" data-v="paid">✅ Já pagou</button>
     <button data-a="setstatus" data-v="pending">⏳ Não pagou</button>
+    <button data-a="setstatus" data-v="own">🙋 Pra mim</button>
   </div>
   <div class="seg" id="smethod">
     <button class="on" data-a="setmethod" data-v="Pix">Pix</button>
@@ -534,13 +536,19 @@ function checkout() {
   </div>
   <div id="cashrow" hidden><label>Valor recebido (R$)<input id="frec" inputmode="decimal" placeholder="0,00"></label>
     <div class="troco" id="ftroco"></div></div>
-  <div class="totalrow"><span>Total</span><b id="ftotal">${brl(cartSubtotal())}</b></div>
-  <button class="btn primary wide" data-a="confirmsale">Fechar compra</button>`);
+  <div class="totalrow"><span id="flabel">Total</span><b id="ftotal">${brl(cartSubtotal())}</b></div>
+  <button class="btn primary wide" id="fconfirm" data-a="confirmsale">Fechar compra</button>`);
 }
 function updateCheckout() {
   const sub = cartSubtotal(), disc = Math.min(num($('#fdisc') && $('#fdisc').value), sub);
   const total = Math.max(0, sub - disc);
-  if ($('#ftotal')) $('#ftotal').textContent = brl(total);
+  const own = fs.status === 'own';
+  if ($('#ftotal')) $('#ftotal').textContent = own ? brl(cartCost()) : brl(total);
+  if ($('#flabel')) $('#flabel').textContent = own ? 'Custo (sem lucro)' : 'Total';
+  if ($('#fconfirm')) $('#fconfirm').textContent = own ? 'Registrar retirada' : 'Fechar compra';
+  if ($('#fnamel')) $('#fnamel').hidden = own;
+  if ($('#fdisc')) $('#fdisc').closest('label').hidden = own;
+  if ($('#newc') && $('#fname')) { const v = $('#fname').value.trim().toLowerCase(); $('#newc').hidden = own || !v || S.customers.some(c => c.name.toLowerCase() === v); }
   const cash = fs.status === 'paid' && fs.method === 'Dinheiro';
   if ($('#cashrow')) $('#cashrow').hidden = !cash;
   if ($('#smethod')) $('#smethod').style.display = fs.status === 'paid' ? '' : 'none';
@@ -554,6 +562,14 @@ function confirmSale() {
   const nameIn = $('#fname').value.trim();
   if (fs.status === 'pending' && !nameIn) return toast('Venda não paga precisa do nome do cliente');
   for (const l of lines) if (l.p.stock < l.q && !confirm(`Estoque de ${l.p.name} é ${l.p.stock}. Vender ${l.q} mesmo assim?`)) return;
+  if (fs.status === 'own') {
+    const d0 = $('#fdate').value || dkey(new Date()), w0 = d0 === dkey(new Date()) ? new Date() : new Date(d0 + 'T12:00:00');
+    const it0 = lines.map(l => ({ pid: l.p.id, name: l.p.name, qty: l.q, total: 0, cost: r2(l.q * (l.p.cost || 0)) }));
+    it0.forEach(i => { prod(i.pid).stock -= i.qty; });
+    const c0 = r2(it0.reduce((a, i) => a + i.cost, 0));
+    S.sales.push({ id: uid(), date: w0.toISOString(), items: it0, subtotal: 0, discount: 0, total: 0, cost: c0, customerId: null, customerName: '', status: 'paid', method: 'Pra mim', own: true, paidAt: w0.toISOString() });
+    save(); cart = {}; closeSheet(); render(); toast('🙋 Retirada registrada (custo ' + brl(c0) + ')'); return;
+  }
   let cid = null, cname = '';
   if (nameIn) {
     let c = S.customers.find(x => x.name.toLowerCase() === nameIn.toLowerCase());
@@ -647,13 +663,14 @@ function vLucro() {
   const sales = S.sales.filter(s => inPeriod(s.date));
   const rev = sales.reduce((a, s) => a + s.total, 0), cost = sales.reduce((a, s) => a + s.cost, 0), profit = rev - cost;
   const recebido = sales.filter(s => s.status === 'paid').reduce((a, s) => a + s.total, 0), areceber = rev - recebido;
-  const units = sales.reduce((a, s) => a + s.items.reduce((b, i) => b + i.qty, 0), 0);
+  const units = sales.filter(s => !s.own).reduce((a, s) => a + s.items.reduce((b, i) => b + i.qty, 0), 0);
   const b = buckets(sales); sales.forEach(s => { const bb = b.out.find(x => x.key === b.keyOf(s.date)); if (bb) { bb.rev += s.total; bb.profit += s.total - s.cost; } });
   const byP = {};
-  sales.forEach(s => s.items.forEach(i => { const o = byP[i.name] = byP[i.name] || { qty: 0, rev: 0, cost: 0 }; o.qty += i.qty; o.rev += i.total; o.cost += i.cost; }));
+  sales.forEach(s => s.items.forEach(i => { const o = byP[i.name] = byP[i.name] || { qty: 0, rev: 0, cost: 0 }; if (!s.own) { o.qty += i.qty; o.rev += i.total; } o.cost += i.cost; }));
   const rank = Object.entries(byP).map(([n, o]) => [n, Object.assign(o, { profit: o.rev - o.cost })]).sort((a, c) => c[1].profit - a[1].profit || c[1].rev - a[1].rev);
   const mx = Math.max(1, ...rank.map(r => Math.max(r[1].profit, 0)));
   const semCusto = S.products.filter(p => !p.cost).length;
+  const ownCost = r2(sales.filter(s => s.own).reduce((a, s) => a + s.cost, 0));
   const P = (v, t) => `<button class="${period === v ? 'on' : ''}" data-a="period" data-v="${v}">${t}</button>`;
   return head('Lucro') + `<div class="chipsrow">${P('7', '7 dias')}${P('30', '30 dias')}${P('month', 'Este mês')}${P('all', 'Tudo')}</div>
   <div class="hero"><span>Meu lucro completo (o que vendi − o que paguei)</span><b>${brl(profit)}</b><span>${rev > 0 ? 'Margem de ' + Math.round(profit / rev * 100) + '%' : 'Sem vendas nesse período'}</span></div>
@@ -666,6 +683,7 @@ function vLucro() {
     <div class="stat"><b style="color:var(--green)">${brl(recebido)}</b><span>já recebi</span></div>
     <div class="stat ${areceber ? 'warn' : ''}"><b>${brl(areceber)}</b><span>ainda vou receber</span></div>
   </div>
+  ${ownCost > 0 ? `<div class="card"><b>🙋 Peguei pra mim: ${brl(ownCost)}</b><p class="muted" style="margin:4px 0 0">Só o que paguei nas trufas, sem lucro. Já está descontado do meu lucro acima.</p></div>` : ''}
   ${semCusto ? `<div class="banner">💡 ${semCusto} ${semCusto > 1 ? 'sabores estão' : 'sabor está'} sem o valor que você paga, então o lucro deles aparece maior que o real. Preencha em Mais → Preços e custos.</div>` : ''}
   <div class="card"><h3>Quanto vendi e quanto lucrei</h3>${sales.length ? chartSVG(b.out) : '<div class="empty">Sem vendas nesse período</div>'}
     <div class="legend"><span><i style="background:#f2c14e"></i>Vendi</span><span><i style="background:#d9246f"></i>Lucro</span></div>
@@ -715,16 +733,16 @@ function custSheet(id) {
 function vHist() {
   const ss = S.sales.slice().sort((a, b) => a.date < b.date ? 1 : -1).slice(0, 150);
   return sub('', 'Histórico') + (ss.length ? ss.map(s => `<div class="card prod" data-a="sale" data-id="${s.id}"><div class="pinfo"><span class="muted">${fmtDate(s.date)}${s.customerName ? ' · ' + esc(s.customerName) : ''}</span>
-    <div>${esc(itemsText(s))}</div></div><div style="text-align:right"><b>${brl(s.total)}</b><br><span class="pill ${s.status}">${s.status === 'paid' ? esc(s.method || 'Pago') : 'Pendente'}</span></div></div>`).join('') : '<div class="empty">Nenhuma venda registrada ainda.</div>');
+    <div>${esc(itemsText(s))}</div></div><div style="text-align:right">${s.own ? `<b style="color:var(--orange)">− ${brl(s.cost)}</b><br><span class="pill pend">Pra mim</span>` : `<b>${brl(s.total)}</b><br><span class="pill ${s.status}">${s.status === 'paid' ? esc(s.method || 'Pago') : 'Pendente'}</span>`}</div></div>`).join('') : '<div class="empty">Nenhuma venda registrada ainda.</div>');
 }
 function saleSheet(id) {
   const s = S.sales.find(x => x.id === id); if (!s) return;
-  sheet(`<h2>Venda de ${fmtDate(s.date)}</h2>
+  sheet(`<h2>${s.own ? 'Retirada (pra mim)' : 'Venda'} de ${fmtDate(s.date)}</h2>
     ${s.customerName ? `<p class="muted">Cliente: ${esc(s.customerName)}</p>` : ''}
-    ${s.items.map(i => `<div class="line"><span>${i.qty}× ${esc(i.name)}</span><b>${brl(i.total)}</b></div>`).join('')}
+    ${s.items.map(i => `<div class="line"><span>${i.qty}× ${esc(i.name)}</span><b>${brl(s.own ? i.cost : i.total)}</b></div>`).join('')}
     ${s.discount ? `<div class="line"><span>Desconto</span><b>− ${brl(s.discount)}</b></div>` : ''}
-    <div class="totalrow"><span>Total</span><b>${brl(s.total)}</b></div>
-    <p class="muted">Paguei ${brl(s.cost)} · Lucro ${brl(s.total - s.cost)} · ${s.status === 'paid' ? 'Pago via ' + esc(s.method) : 'Pendente'}</p>
+    <div class="totalrow"><span>${s.own ? 'Custo' : 'Total'}</span><b>${brl(s.own ? s.cost : s.total)}</b></div>
+    <p class="muted">${s.own ? 'Peguei pra mim · só o custo, sem lucro' : 'Paguei ' + brl(s.cost) + ' · Lucro ' + brl(s.total - s.cost) + ' · ' + (s.status === 'paid' ? 'Pago via ' + esc(s.method) : 'Pendente')}</p>
     ${s.status === 'pending' ? `<button class="btn yellow wide" data-a="paysale" data-ids="${s.id}">Acertar pagamento</button>` : ''}
     <button class="btn danger wide" data-a="delsale" data-id="${s.id}">Excluir venda (devolve ao estoque)</button>`);
 }
