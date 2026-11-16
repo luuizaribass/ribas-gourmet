@@ -1,0 +1,822 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, maximum-scale=1">
+<meta name="theme-color" content="#2a1210">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Ribas">
+<link rel="manifest" href="manifest.json">
+<link rel="apple-touch-icon" href="icon-180.png">
+<link rel="icon" href="icon-192.png">
+<title>Ribas Gourmet</title>
+<style>
+:root{
+  --bg:#2a1210; --card:#4a2219; --card2:#3a1a14; --nav:#1f0d0b;
+  --pink:#d9246f; --pink2:#f5a9c8; --yellow:#f2c14e; --cream:#fde9de; --orange:#f59e42;
+  --green:#5fd39a; --red:#ff6b6b; --muted:#c9a89a;
+}
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+html,body{margin:0;background:var(--bg);color:var(--cream);
+  font-family:ui-rounded,-apple-system,BlinkMacSystemFont,"Segoe UI",system-ui,sans-serif;font-size:16px}
+body{min-height:100dvh;padding-top:env(safe-area-inset-top);-webkit-text-size-adjust:100%}
+body.lock{overflow:hidden}
+button,input,select{font:inherit;color:inherit}
+#app{max-width:560px;margin:0 auto;padding:8px 16px calc(150px + env(safe-area-inset-bottom))}
+
+/* cabeçalho */
+.top{text-align:center;margin-bottom:10px;position:relative}
+.logo{display:inline-flex;flex-direction:column;align-items:center;background:var(--cream);color:var(--pink);
+  padding:6px 22px 8px;border-radius:0 0 18px 18px;line-height:1}
+.logo i{font-family:'Snell Roundhand','Savoye LET','Brush Script MT',cursive;font-size:26px;font-weight:700}
+.logo small{color:var(--bg);font-weight:800;letter-spacing:.14em;font-size:10px;margin-top:1px}
+.cloud{position:absolute;right:0;top:8px;border:0;background:var(--card);color:var(--muted);font-size:12px;font-weight:700;padding:6px 10px;border-radius:99px}
+.cloud.ok{color:var(--green)} .cloud.pend{color:var(--yellow)} .cloud.err{color:var(--red)}
+h1{font-family:'Snell Roundhand','Savoye LET','Brush Script MT',cursive;color:var(--yellow);
+  font-size:44px;margin:6px 0 0;font-weight:700;line-height:1.05}
+h2{margin:0 0 12px;font-size:20px;color:var(--yellow)}
+h3{margin:0;font-size:17px}
+.sub{color:var(--pink2);font-size:13px;margin:2px 0 0}
+.muted{color:var(--muted);font-size:13px}
+.back{background:none;border:0;color:var(--pink2);font-size:16px;padding:6px 0;margin-bottom:2px}
+
+/* cards e botões */
+.card{background:var(--card);border-radius:18px;padding:14px;margin:10px 0}
+.stats{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin:12px 0}
+.stat{background:var(--card);border-radius:16px;padding:10px 8px;text-align:center}
+.stat b{display:block;font-size:19px;color:var(--yellow)}
+.stat span{font-size:11px;color:var(--muted)}
+.stat.warn b{color:var(--orange)}
+.hero{background:var(--pink);border-radius:20px;padding:16px;margin:10px 0}
+.hero span{font-size:13px;opacity:.9}
+.hero b{display:block;font-size:30px;margin-top:2px}
+.btn{border:0;border-radius:14px;padding:13px 16px;background:var(--card);font-weight:700;cursor:pointer}
+.btn.wide{display:block;width:100%;margin-top:10px;text-align:center;text-decoration:none}
+.btn.primary{background:var(--pink);color:#fff}
+.btn.yellow{background:var(--yellow);color:var(--bg)}
+.btn.danger{background:transparent;border:1.5px solid var(--red);color:var(--red)}
+.btn.small{padding:8px 12px;font-size:14px;border-radius:12px}
+.chips{display:flex;flex-wrap:wrap;gap:6px;margin-top:8px}
+.chip{background:var(--yellow);color:var(--bg);font-weight:800;font-size:13px;padding:3px 10px;border-radius:99px}
+.chip.dim{background:transparent;border:1px dashed var(--muted);color:var(--muted);font-weight:600}
+.chip.pink{background:var(--pink);color:#fff}
+.chip.red{background:var(--red);color:var(--bg)}
+.chip.orange{background:var(--orange);color:var(--bg)}
+.chip.green{background:var(--green);color:var(--bg)}
+
+/* produto / estoque */
+.prod{display:flex;align-items:center;gap:10px;justify-content:space-between}
+.pinfo{flex:1;min-width:0}
+.stockcol{display:flex;flex-direction:column;align-items:center;gap:6px}
+.round{width:36px;height:36px;border-radius:50%;border:0;background:var(--pink);color:#fff;font-size:22px;font-weight:700;line-height:1;cursor:pointer}
+.round.off{background:var(--card2);color:var(--muted)}
+.num{min-width:64px;height:44px;border:0;border-radius:12px;background:var(--card2);font-size:22px;font-weight:800;color:var(--cream)}
+.num.low{color:var(--orange)} .num.zero{color:var(--red)}
+
+/* vender */
+.sale{display:flex;align-items:center;justify-content:space-between;gap:10px}
+.sale.on{outline:2px solid var(--yellow)}
+.step{display:flex;align-items:center;gap:8px}
+.step b{min-width:22px;text-align:center;font-size:18px}
+.cartbar{position:fixed;left:12px;right:12px;bottom:calc(66px + env(safe-area-inset-bottom));max-width:536px;margin:0 auto;
+  background:var(--yellow);color:var(--bg);border-radius:18px;padding:10px 12px 10px 16px;display:flex;align-items:center;justify-content:space-between;
+  box-shadow:0 6px 24px rgba(0,0,0,.45);z-index:20}
+.cartbar b{font-size:20px}
+.cartbar small{display:block;font-weight:600;opacity:.8}
+.cartbar button{background:var(--bg);color:var(--yellow);border:0;border-radius:12px;padding:11px 16px;font-weight:800}
+
+/* navegação */
+nav{position:fixed;left:0;right:0;bottom:0;background:var(--nav);display:flex;
+  padding:6px 4px calc(6px + env(safe-area-inset-bottom));border-top:1px solid #3d2019;z-index:30}
+nav button{flex:1;background:none;border:0;color:var(--muted);font-size:11px;font-weight:700;padding:4px 0;position:relative}
+nav button span{display:block;font-size:22px;line-height:1.2;filter:grayscale(.6);opacity:.8}
+nav button.on{color:var(--yellow)} nav button.on span{filter:none;opacity:1}
+nav em{position:absolute;top:0;right:22%;background:var(--pink);color:#fff;font-style:normal;font-size:11px;font-weight:800;min-width:18px;height:18px;border-radius:9px;display:grid;place-items:center;padding:0 4px}
+
+/* sheet */
+.ov{position:fixed;inset:0;background:rgba(0,0,0,.6);z-index:50;display:flex;align-items:flex-end}
+.ov[hidden]{display:none}
+.sheet{background:var(--bg);border-radius:24px 24px 0 0;width:100%;max-width:560px;margin:0 auto;max-height:92dvh;overflow:auto;
+  padding:8px 18px calc(24px + env(safe-area-inset-bottom));border-top:3px solid var(--pink)}
+.grab{width:44px;height:5px;border-radius:3px;background:#5b3329;margin:6px auto 14px}
+label{display:block;font-size:13px;color:var(--pink2);margin:10px 0 0;font-weight:700}
+input,select{display:block;width:100%;margin-top:5px;background:var(--card);border:1.5px solid #5b3329;border-radius:12px;padding:12px;font-size:16px;color:var(--cream)}
+input:focus,select:focus{outline:none;border-color:var(--yellow)}
+input[type=date]{min-height:48px}
+.row2{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.seg{display:flex;gap:8px;margin-top:10px}
+.seg button{flex:1;border:1.5px solid #5b3329;background:var(--card);border-radius:12px;padding:11px 4px;font-weight:700;font-size:15px}
+.seg button.on{background:var(--yellow);color:var(--bg);border-color:var(--yellow)}
+.totalrow{display:flex;justify-content:space-between;align-items:baseline;margin-top:16px;font-size:16px}
+.totalrow b{font-size:28px;color:var(--yellow)}
+.troco{margin-top:8px;color:var(--green);font-weight:700}
+
+/* listas */
+.line{display:flex;justify-content:space-between;gap:10px;align-items:center;padding:9px 0;border-bottom:1px dashed #5b3329}
+.line:last-child{border-bottom:0}
+.line .l{min-width:0}
+.line .r{text-align:right;white-space:nowrap}
+.pill{display:inline-block;font-size:12px;font-weight:800;padding:2px 9px;border-radius:99px}
+.pill.pend{background:var(--orange);color:var(--bg)}
+.pill.paid{background:var(--green);color:var(--bg)}
+.bar{height:8px;background:var(--card2);border-radius:5px;overflow:hidden;margin-top:6px}
+.bar i{display:block;height:100%;background:var(--pink);border-radius:5px}
+.chipsrow{display:flex;gap:8px;overflow-x:auto;margin:10px 0}
+.chipsrow button{flex:0 0 auto;border:0;background:var(--card);border-radius:99px;padding:8px 14px;font-weight:700;font-size:14px}
+.chipsrow button.on{background:var(--pink);color:#fff}
+.menu{display:flex;align-items:center;gap:12px;width:100%;text-align:left;border:0;cursor:pointer}
+.menu span.ic{font-size:26px}
+.menu small{display:block;color:var(--muted);font-weight:500}
+.empty{text-align:center;color:var(--muted);padding:26px 10px}
+.legend{display:flex;gap:14px;font-size:12px;color:var(--muted);margin-top:6px}
+.legend i{display:inline-block;width:10px;height:10px;border-radius:3px;margin-right:5px}
+.banner{background:#5a2a14;border:1px solid var(--orange);color:var(--cream);border-radius:14px;padding:10px 12px;font-size:13px;margin:8px 0}
+.toast{position:fixed;left:50%;top:calc(14px + env(safe-area-inset-top));transform:translateX(-50%);background:var(--cream);color:var(--bg);
+  padding:10px 18px;border-radius:99px;font-weight:700;z-index:99;box-shadow:0 4px 18px rgba(0,0,0,.5);max-width:90%;text-align:center}
+</style>
+<script src="config.js"></script>
+</head>
+<body>
+<div id="app"></div>
+<div id="cartbar"></div>
+<nav>
+  <button data-a="tab" data-v="estoque"><span>🍫</span>Estoque</button>
+  <button data-a="tab" data-v="vender"><span>🛍️</span>Vender</button>
+  <button data-a="tab" data-v="pend"><span>⏳</span>Pendentes<em id="pbadge" hidden></em></button>
+  <button data-a="tab" data-v="lucro"><span>📈</span>Lucro</button>
+  <button data-a="tab" data-v="mais"><span>⚙️</span>Mais</button>
+</nav>
+<div class="ov" id="ov" hidden><div class="sheet" id="sh"></div></div>
+<input type="file" id="imp" accept="application/json,.json" hidden>
+
+<script>
+'use strict';
+/* ============ utilidades ============ */
+const KEY = 'ribas_gourmet_v1';
+const $ = s => document.querySelector(s);
+const brl = n => (Number(n) || 0).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
+const uid = () => Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
+const esc = s => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+const num = v => { const n = parseFloat(String(v == null ? '' : v).replace(',', '.')); return isFinite(n) ? n : 0; };
+const int = v => Math.round(num(v));
+const pad = n => String(n).padStart(2, '0');
+const dkey = d => { d = new Date(d); return d.getFullYear() + '-' + pad(d.getMonth() + 1) + '-' + pad(d.getDate()); };
+const fmtDate = iso => { const d = new Date(iso); return pad(d.getDate()) + '/' + pad(d.getMonth() + 1) + ' ' + pad(d.getHours()) + ':' + pad(d.getMinutes()); };
+const fmtD = ymd => String(ymd).split('-').reverse().join('/');
+const short = n => n.replace(/^Trufa /, '');
+const lucroTxt = (c, p) => (c > 0 && p > 0) ? brl(p - c) + ' (' + Math.round((p - c) / p * 100) + '%)' : '—';
+
+/* ============ dados ============ */
+function defaults() {
+  const P = (name, sub, price, extra) => Object.assign({ id: uid(), name, sub, price, cost: 0, stock: 0, min: 5, promoQty: 0, promoPrice: 0 }, extra || {});
+  return {
+    v: 2,
+    products: [
+      P('Tabletinho 5g', 'Ao leite · Branca · Café · Menta · 55% · 70%', 2, { promoQty: 3, promoPrice: 5, min: 10 }),
+      P('Trufa Bless', 'Zero açúcar e zero lactose · Ao leite · Branca · Morango · Pistache', 8.5),
+      P('Trufa Dreams', 'Cereja ao licor · Marula · Petit Gâteau', 8),
+      P('Trufa Mil-folhas', 'Tradicional · Avelã', 7.5),
+      P('Trufa Lanut', 'Avelã · Pistache', 7.5),
+      P('Trufa Lacreme', 'Ao leite · Branca · Avelã · 70% · Kids · Pistache', 5.5),
+      P('Trufa Tradicional', 'Ao leite · Branca · Mezzo', 6.5),
+      P('Trufa Variadas', 'Torta de limão · Maracujá · Morango · Coco · 55% · Paçoca · Menta · Speculoos', 7)
+    ],
+    customers: [], sales: [], stockLog: [], lastBackup: null
+  };
+}
+function load() {
+  try {
+    const r = localStorage.getItem(KEY);
+    if (r) { const d = JSON.parse(r); if (d && Array.isArray(d.products)) return Object.assign(defaults(), d); }
+  } catch (e) {}
+  return defaults();
+}
+let S = load();
+function persistLocal() {
+  try { localStorage.setItem(KEY, JSON.stringify(S)); }
+  catch (e) { toast('⚠️ Não consegui salvar no celular. Faça um backup!'); }
+}
+persistLocal();
+try { if (navigator.storage && navigator.storage.persist) navigator.storage.persist(); } catch (e) {}
+
+const prod = id => S.products.find(p => p.id === id);
+const cust = id => S.customers.find(c => c.id === id);
+function lineTotal(p, q) {
+  if (p.promoQty > 0 && p.promoPrice > 0) return Math.floor(q / p.promoQty) * p.promoPrice + (q % p.promoQty) * p.price;
+  return q * p.price;
+}
+const itemsText = s => s.items.map(i => i.qty + '× ' + short(i.name)).join(', ');
+
+/* ============ banco de dados na nuvem (Supabase) ============ */
+const CFG = window.RIBAS_CONFIG || {};
+const cloudOn = !!(CFG.url && CFG.key);
+const BASE = cloudOn ? CFG.url.replace(/\/+$/, '') : '';
+const META_KEY = 'ribas_meta_v1';
+let META = (() => { try { return JSON.parse(localStorage.getItem(META_KEY)) || {}; } catch (e) { return {}; } })();
+const metaSave = () => { try { localStorage.setItem(META_KEY, JSON.stringify(META)); } catch (e) {} };
+let syncing = false, syncTimer = null, syncErr = '';
+
+function save() {
+  S.updatedAt = new Date().toISOString();
+  persistLocal();
+  META.dirty = true; metaSave();
+  updatePill(); scheduleSync();
+}
+function scheduleSync() {
+  if (!cloudOn || !META.uid) return;
+  clearTimeout(syncTimer); syncTimer = setTimeout(() => syncNow(), 1500);
+}
+function pillParts() {
+  if (!cloudOn) return ['', '☁️ off'];
+  if (!META.uid) return ['', '☁️ entrar'];
+  if (syncErr) return ['err', '☁️ erro'];
+  if (META.dirty) return ['pend', navigator.onLine === false ? '☁️ sem net' : '☁️ enviando…'];
+  return ['ok', '☁️ salvo'];
+}
+function updatePill() {
+  const [c, t] = pillParts();
+  document.querySelectorAll('.cloud').forEach(b => { b.className = 'cloud ' + c; b.textContent = t; });
+}
+function setSession(j) {
+  META.access = j.access_token; META.refresh = j.refresh_token;
+  META.exp = Date.now() + (j.expires_in || 3600) * 1000;
+  if (j.user) { META.uid = j.user.id; META.email = j.user.email; }
+  metaSave();
+}
+async function authPost(grant, body) {
+  const r = await fetch(BASE + '/auth/v1/token?grant_type=' + grant, { method: 'POST', headers: { apikey: CFG.key, 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+  let j = {}; try { j = await r.json(); } catch (e) {}
+  return { ok: r.ok, status: r.status, j };
+}
+async function login(email, pass) {
+  const r = await authPost('password', { email, password: pass });
+  if (!r.ok) throw new Error(r.j.error_description || r.j.msg || 'E-mail ou senha incorretos');
+  setSession(r.j);
+}
+async function token() {
+  if (!META.access) throw new Error('Faça login');
+  if (Date.now() > META.exp - 60000) {
+    const r = await authPost('refresh_token', { refresh_token: META.refresh });
+    if (!r.ok) {
+      if (r.status === 400 || r.status === 401) { META.access = null; META.uid = null; metaSave(); }
+      throw new Error('Sessão expirou. Entre de novo.');
+    }
+    setSession(r.j);
+  }
+  return META.access;
+}
+const hdr = async () => ({ apikey: CFG.key, Authorization: 'Bearer ' + await token(), 'Content-Type': 'application/json' });
+async function remoteGet() {
+  const r = await fetch(`${BASE}/rest/v1/app_state?select=data,updated_at&user_id=eq.${META.uid}`, { headers: await hdr() });
+  if (!r.ok) throw new Error('Erro ao ler a nuvem (' + r.status + ')');
+  const a = await r.json(); return a[0] || null;
+}
+async function remotePut() {
+  const h = await hdr(); h.Prefer = 'resolution=merge-duplicates,return=minimal';
+  const r = await fetch(`${BASE}/rest/v1/app_state?on_conflict=user_id`, { method: 'POST', headers: h, body: JSON.stringify({ user_id: META.uid, data: S, updated_at: S.updatedAt }) });
+  if (!r.ok) throw new Error('Erro ao salvar na nuvem (' + r.status + ')');
+}
+async function pushLocal() {
+  if (!S.updatedAt) { S.updatedAt = new Date().toISOString(); persistLocal(); }
+  const stamp = S.updatedAt;
+  await remotePut();
+  if (S.updatedAt === stamp) META.dirty = false; else scheduleSync();
+}
+async function syncNow(manual) {
+  if (!cloudOn || !META.uid || syncing) return;
+  if (navigator.onLine === false) { if (manual) toast('Sem internet'); updatePill(); return; }
+  syncing = true;
+  try {
+    const rem = await remoteGet();
+    const lt = Date.parse(S.updatedAt) || 0, rt = rem ? Date.parse(rem.updated_at) : 0;
+    if (!rem || lt > rt) await pushLocal();
+    else if (rt > lt) {
+      if (META.dirty && !confirm('Os dados da nuvem são mais novos que os deste celular.\n\nOK = usar os da nuvem\nCancelar = manter os do celular e enviar')) await pushLocal();
+      else { S = Object.assign(defaults(), rem.data); if (!S.updatedAt) S.updatedAt = rem.updated_at; persistLocal(); META.dirty = false; render(); }
+    } else META.dirty = false;
+    META.lastSync = new Date().toISOString(); syncErr = ''; metaSave();
+    if (manual) toast('☁️ Tudo sincronizado');
+  } catch (e) {
+    syncErr = (e && e.message) || 'Falha ao sincronizar'; if (manual) toast(syncErr);
+  } finally {
+    syncing = false; updatePill(); if (view === 'nuvem') render();
+  }
+}
+
+/* ============ estado de tela ============ */
+let view = 'estoque', period = '7', cart = {}, fs = {}, payIds = [];
+
+function toast(msg) {
+  const t = document.createElement('div'); t.className = 'toast'; t.textContent = msg;
+  document.body.appendChild(t); setTimeout(() => t.remove(), 2400);
+}
+function sheet(html) { $('#sh').innerHTML = '<div class="grab"></div>' + html; $('#ov').hidden = false; document.body.classList.add('lock'); }
+function closeSheet() { $('#ov').hidden = true; document.body.classList.remove('lock'); }
+
+const head = t => { const [c, x] = pillParts(); return `<header class="top"><div class="logo"><i>Ribas</i><small>GOURMET</small></div><button class="cloud ${c}" data-a="tab" data-v="nuvem">${x}</button><h1>${t}</h1></header>`; };
+const sub = (t, titulo) => `<button class="back" data-a="tab" data-v="mais">‹ Mais</button>${head(titulo)}`;
+
+/* ============ ESTOQUE ============ */
+function backupBanner() {
+  if (!S.sales.length || (cloudOn && META.uid)) return '';
+  const d = S.lastBackup ? (Date.now() - new Date(S.lastBackup)) / 864e5 : 99;
+  if (d < 7) return '';
+  return `<div class="banner">💾 Seus dados estão só neste celular. ${cloudOn ? '<b data-a="tab" data-v="nuvem" style="text-decoration:underline">Entre no banco de dados</b>' : '<b data-a="tab" data-v="backup" style="text-decoration:underline">Faça um backup</b>'}.</div>`;
+}
+function vEstoque() {
+  const ps = S.products;
+  const units = ps.reduce((a, p) => a + Math.max(0, p.stock), 0);
+  const val = ps.reduce((a, p) => a + Math.max(0, p.stock) * (p.cost || 0), 0);
+  const low = ps.filter(p => p.stock <= p.min).length;
+  return head('Estoque') + backupBanner() + `
+  <div class="stats">
+    <div class="stat"><b>${units}</b><span>unidades</span></div>
+    <div class="stat"><b>${brl(val)}</b><span>pago no estoque</span></div>
+    <div class="stat ${low ? 'warn' : ''}"><b>${low}</b><span>acabando</span></div>
+  </div>` + (ps.map(p => {
+    const cls = p.stock <= 0 ? 'zero' : p.stock <= p.min ? 'low' : '';
+    const tag = p.stock <= 0 ? '<span class="chip red">Esgotado</span>' : p.stock <= p.min ? '<span class="chip orange">Acabando</span>' : '';
+    return `<div class="card prod">
+      <div class="pinfo" data-a="editprod" data-id="${p.id}">
+        <h3>${esc(p.name)}</h3><p class="sub">${esc(p.sub)}</p>
+        <div class="chips"><span class="chip">${brl(p.price)}</span>
+          ${p.promoQty > 0 ? `<span class="chip pink">${p.promoQty} por ${brl(p.promoPrice)}</span>` : ''}
+          ${p.cost > 0 ? `<span class="chip green">lucro ${brl(p.price - p.cost)}</span>` : '<span class="chip dim">sem custo</span>'}${tag}</div>
+      </div>
+      <div class="stockcol">
+        <button class="num ${cls}" data-a="stockadd" data-id="${p.id}">${p.stock}</button>
+        <button class="btn small primary" data-a="stockadd" data-id="${p.id}">+ Lançar</button>
+      </div></div>`;
+  }).join('')) + `<button class="btn wide primary" data-a="newprod">+ Novo produto</button>
+  <p class="muted" style="text-align:center;margin-top:14px">Toque em “+ Lançar” para registrar uma entrada com a data. O estoque baixa sozinho a cada venda.</p>`;
+}
+function prodSheet(id) {
+  const p = id ? prod(id) : { name: '', sub: '', price: '', cost: '', stock: 0, min: 5, promoQty: '', promoPrice: '' };
+  sheet(`<h2>${id ? 'Editar produto' : 'Novo produto'}</h2>
+  <form data-form="prod" data-id="${id || ''}">
+    <label>Nome<input name="name" required value="${esc(p.name)}"></label>
+    <label>Sabores / descrição<input name="sub" value="${esc(p.sub)}"></label>
+    <div class="row2">
+      <label>Paguei (custo) R$<input name="cost" inputmode="decimal" value="${p.cost || ''}"></label>
+      <label>Vendo por R$<input name="price" inputmode="decimal" required value="${p.price}"></label>
+    </div>
+    <div class="row2">
+      ${id ? '' : `<label>Estoque inicial<input name="stock" inputmode="numeric" value="0"></label>`}
+      <label>Avisar quando ≤<input name="min" inputmode="numeric" value="${p.min}"></label>
+    </div>
+    <div class="row2">
+      <label>Promoção: quantidade<input name="promoQty" inputmode="numeric" placeholder="ex: 3" value="${p.promoQty || ''}"></label>
+      <label>Promoção: preço total<input name="promoPrice" inputmode="decimal" placeholder="ex: 5" value="${p.promoPrice || ''}"></label>
+    </div>
+    <button class="btn primary wide">Salvar</button>
+    ${id ? `<button type="button" class="btn danger wide" data-a="delprod" data-id="${id}">Excluir produto</button>` : ''}
+  </form>`);
+}
+function stockSheet(id) {
+  const p = prod(id); fs = { id };
+  const log = S.stockLog.filter(e => e.pid === id).sort((a, b) => a.date < b.date ? 1 : a.date > b.date ? -1 : (a.at < b.at ? 1 : -1)).slice(0, 8);
+  sheet(`<h2>${esc(p.name)}</h2>
+  <p class="muted">Estoque atual: <b style="color:var(--yellow);font-size:20px">${p.stock}</b></p>
+  <div class="row2">
+    <label>Data<input id="sdate" type="date" value="${dkey(new Date())}"></label>
+    <label>Quantas entraram<input id="sq" inputmode="numeric" placeholder="ex: 10"></label>
+  </div>
+  <div class="seg"><button data-a="stockq" data-q="5">5</button><button data-a="stockq" data-q="10">10</button><button data-a="stockq" data-q="20">20</button><button data-a="stockq" data-q="50">50</button></div>
+  <button class="btn primary wide" data-a="stockapply" data-s="1">Lançar entrada no estoque</button>
+  <div class="row2" style="margin-top:10px">
+    <button class="btn small danger" data-a="stockapply" data-s="-1">Retirar (correção)</button>
+    <button class="btn small" data-a="stockset">Corrigir p/ número exato</button>
+  </div>
+  ${log.length ? `<h3 style="margin-top:18px">Últimos lançamentos</h3>` + log.map(e => `<div class="line"><span>${fmtD(e.date)}</span><b style="color:${e.qty > 0 ? 'var(--green)' : 'var(--red)'}">${e.qty > 0 ? '+' : ''}${e.qty}</b></div>`).join('') : ''}`);
+}
+function logStock(p, qty, date) {
+  S.stockLog.push({ id: uid(), pid: p.id, name: p.name, date: date || dkey(new Date()), qty, at: new Date().toISOString() });
+}
+
+/* ============ VENDER ============ */
+const cartSubtotal = () => Object.entries(cart).reduce((a, [id, q]) => a + (prod(id) ? lineTotal(prod(id), q) : 0), 0);
+const cartCount = () => Object.values(cart).reduce((a, q) => a + q, 0);
+function vVender() {
+  return head('Vender') + `<p class="muted" style="text-align:center;margin:0 0 6px">Toque no + para montar a compra</p>` +
+    S.products.map(p => {
+      const q = cart[p.id] || 0;
+      return `<div class="card sale ${q ? 'on' : ''}">
+        <div class="pinfo"><h3>${esc(p.name)}</h3>
+          <div class="chips"><span class="chip">${brl(p.price)}</span>
+          ${p.promoQty > 0 ? `<span class="chip pink">${p.promoQty} por ${brl(p.promoPrice)}</span>` : ''}
+          <span class="chip dim">${p.stock} em estoque</span></div>
+          ${q ? `<p class="sub" style="margin-top:6px">${q}× = <b>${brl(lineTotal(p, q))}</b></p>` : ''}
+        </div>
+        <div class="step">
+          <button class="round ${q ? '' : 'off'}" data-a="cartdelta" data-id="${p.id}" data-d="-1">−</button>
+          <b>${q}</b>
+          <button class="round" data-a="cartdelta" data-id="${p.id}" data-d="1">+</button>
+        </div></div>`;
+    }).join('') || '<div class="empty">Cadastre produtos na aba Estoque.</div>';
+}
+function renderCartBar() {
+  const n = cartCount();
+  $('#cartbar').innerHTML = (view === 'vender' && n) ? `<div class="cartbar"><div><small>${n} ${n > 1 ? 'itens' : 'item'}</small><b>${brl(cartSubtotal())}</b></div>
+    <div><button data-a="clearcart" style="background:transparent;color:var(--bg);opacity:.7">Limpar</button><button data-a="checkout">Finalizar</button></div></div>` : '';
+}
+function checkout() {
+  fs = { status: 'paid', method: 'Pix' };
+  sheet(`<h2>Finalizar venda</h2>
+  <div class="muted">${Object.keys(cart).map(id => prod(id) ? cart[id] + '× ' + short(prod(id).name) : '').join(', ')}</div>
+  <label>Nome do cliente
+    <input id="fname" list="clist" autocomplete="off" autocapitalize="words" placeholder="ex: Ana"></label>
+  <datalist id="clist">${S.customers.map(c => `<option value="${esc(c.name)}">`).join('')}</datalist>
+  <div id="newc" hidden><input id="fnp" placeholder="WhatsApp (opcional, para cobrar depois)" inputmode="tel"></div>
+  <div class="seg" id="sstatus">
+    <button class="on" data-a="setstatus" data-v="paid">✅ Já pagou</button>
+    <button data-a="setstatus" data-v="pending">⏳ Não pagou</button>
+  </div>
+  <div class="seg" id="smethod">
+    <button class="on" data-a="setmethod" data-v="Pix">Pix</button>
+    <button data-a="setmethod" data-v="Dinheiro">Dinheiro</button>
+    <button data-a="setmethod" data-v="Cartão">Cartão</button>
+  </div>
+  <div class="row2">
+    <label>Desconto (R$)<input id="fdisc" inputmode="decimal" placeholder="0,00"></label>
+    <label>Data da venda<input id="fdate" type="date" value="${dkey(new Date())}"></label>
+  </div>
+  <div id="cashrow" hidden><label>Valor recebido (R$)<input id="frec" inputmode="decimal" placeholder="0,00"></label>
+    <div class="troco" id="ftroco"></div></div>
+  <div class="totalrow"><span>Total</span><b id="ftotal">${brl(cartSubtotal())}</b></div>
+  <button class="btn primary wide" data-a="confirmsale">Lançar venda</button>`);
+}
+function updateCheckout() {
+  const sub = cartSubtotal(), disc = Math.min(num($('#fdisc') && $('#fdisc').value), sub);
+  const total = Math.max(0, sub - disc);
+  if ($('#ftotal')) $('#ftotal').textContent = brl(total);
+  const cash = fs.status === 'paid' && fs.method === 'Dinheiro';
+  if ($('#cashrow')) $('#cashrow').hidden = !cash;
+  if ($('#smethod')) $('#smethod').style.display = fs.status === 'paid' ? '' : 'none';
+  const rec = num($('#frec') && $('#frec').value);
+  if ($('#ftroco')) $('#ftroco').textContent = (cash && rec > 0) ? (rec >= total ? 'Troco: ' + brl(rec - total) : 'Faltam ' + brl(total - rec)) : '';
+  return total;
+}
+function confirmSale() {
+  const sub = cartSubtotal(); if (!sub) return;
+  const disc = Math.min(num($('#fdisc').value), sub), total = Math.max(0, sub - disc);
+  const nameIn = $('#fname').value.trim();
+  if (fs.status === 'pending' && !nameIn) return toast('Venda não paga precisa do nome do cliente');
+  for (const [id, q] of Object.entries(cart)) {
+    const p = prod(id);
+    if (p && p.stock < q && !confirm(`Estoque de ${p.name} é ${p.stock}. Vender ${q} mesmo assim?`)) return;
+  }
+  let cid = null, cname = '';
+  if (nameIn) {
+    let c = S.customers.find(x => x.name.toLowerCase() === nameIn.toLowerCase());
+    if (!c) { c = { id: uid(), name: nameIn, phone: $('#fnp').value.trim() }; S.customers.push(c); }
+    cid = c.id; cname = c.name;
+  }
+  const ds = $('#fdate').value || dkey(new Date());
+  const when = ds === dkey(new Date()) ? new Date() : new Date(ds + 'T12:00:00');
+  const items = Object.entries(cart).filter(([id]) => prod(id)).map(([id, q]) => {
+    const p = prod(id); return { pid: id, name: p.name, qty: q, total: lineTotal(p, q), cost: q * (p.cost || 0) };
+  });
+  items.forEach(i => { prod(i.pid).stock -= i.qty; });
+  S.sales.push({
+    id: uid(), date: when.toISOString(), items, subtotal: sub, discount: disc, total,
+    cost: items.reduce((a, i) => a + i.cost, 0), customerId: cid, customerName: cname,
+    status: fs.status, method: fs.status === 'paid' ? fs.method : '', paidAt: fs.status === 'paid' ? when.toISOString() : null
+  });
+  save(); cart = {}; closeSheet(); render();
+  toast(fs.status === 'paid' ? '✅ Venda lançada!' : '⏳ Lançada como pendente');
+}
+
+/* ============ PENDENTES ============ */
+function waLink(c, valor) {
+  if (!c || !c.phone) return '';
+  let ph = c.phone.replace(/\D/g, ''); if (ph.length <= 11) ph = '55' + ph;
+  const msg = `Oi, ${c.name.split(' ')[0]}! Tudo bem? 😊 Passando só pra lembrar do valor das trufas da Ribas Gourmet: ${brl(valor)}. Quando puder me avisa, obrigada! 🍫`;
+  return `https://wa.me/${ph}?text=${encodeURIComponent(msg)}`;
+}
+function vPend() {
+  const pend = S.sales.filter(s => s.status === 'pending').sort((a, b) => a.date < b.date ? -1 : 1);
+  const total = pend.reduce((a, s) => a + s.total, 0);
+  const groups = {};
+  pend.forEach(s => { const k = s.customerId || s.customerName || '?'; (groups[k] = groups[k] || []).push(s); });
+  return head('Pendentes') + `<div class="hero"><span>Total a receber</span><b>${brl(total)}</b><span>${pend.length} ${pend.length === 1 ? 'venda' : 'vendas'} em aberto</span></div>` +
+    (Object.keys(groups).length ? Object.entries(groups).map(([k, arr]) => {
+      const c = cust(k), sum = arr.reduce((a, s) => a + s.total, 0), name = c ? c.name : (arr[0].customerName || 'Cliente removido');
+      const wa = waLink(c, sum);
+      return `<div class="card"><div class="line" style="border:0;padding-top:0"><div class="l"><h3>${esc(name)}</h3></div><div class="r"><b style="color:var(--yellow);font-size:20px">${brl(sum)}</b></div></div>
+        ${arr.map(s => `<div class="line"><div class="l"><span class="muted">${fmtDate(s.date)}</span><br>${esc(itemsText(s))}</div>
+          <div class="r"><b>${brl(s.total)}</b><br><button class="btn small yellow" data-a="paysale" data-ids="${s.id}" style="margin-top:4px">Acertar</button></div></div>`).join('')}
+        <div class="row2" style="margin-top:10px">
+          <button class="btn small primary" data-a="paysale" data-ids="${arr.map(s => s.id).join(',')}">Acertar tudo</button>
+          ${wa ? `<a class="btn small" style="text-align:center;text-decoration:none" href="${wa}" target="_blank" rel="noopener">💬 Cobrar</a>` : '<span></span>'}
+        </div></div>`;
+    }).join('') : '<div class="empty">🎉 Ninguém te deve nada!</div>');
+}
+function paySheet(ids) {
+  payIds = ids; const total = S.sales.filter(s => ids.includes(s.id)).reduce((a, s) => a + s.total, 0);
+  sheet(`<h2>Acerto de pagamento</h2><div class="totalrow" style="margin-top:0"><span>Valor</span><b>${brl(total)}</b></div>
+  <p class="muted">Como foi pago?</p>
+  <div class="seg"><button data-a="dopay" data-m="Pix">Pix</button><button data-a="dopay" data-m="Dinheiro">Dinheiro</button><button data-a="dopay" data-m="Cartão">Cartão</button></div>`);
+}
+
+/* ============ LUCRO ============ */
+function inPeriod(iso) {
+  if (period === 'all') return true;
+  const d = new Date(iso), now = new Date();
+  if (period === 'month') return d.getFullYear() === now.getFullYear() && d.getMonth() === now.getMonth();
+  const start = new Date(now.getFullYear(), now.getMonth(), now.getDate() - (+period - 1));
+  return d >= start;
+}
+function buckets(sales) {
+  const out = [], now = new Date();
+  if (period === 'all') {
+    const first = sales.length ? new Date(sales.map(s => s.date).sort()[0]) : now;
+    let y = first.getFullYear(), m = first.getMonth(), n = 0;
+    while ((y < now.getFullYear() || (y === now.getFullYear() && m <= now.getMonth())) && n++ < 36) {
+      out.push({ key: y + '-' + pad(m + 1), label: pad(m + 1) + '/' + String(y).slice(2), rev: 0, profit: 0 });
+      if (++m > 11) { m = 0; y++; }
+    }
+    return { out, keyOf: iso => dkey(iso).slice(0, 7) };
+  }
+  const days = period === 'month' ? now.getDate() : +period;
+  for (let i = days - 1; i >= 0; i--) {
+    const d = new Date(now.getFullYear(), now.getMonth(), now.getDate() - i);
+    out.push({ key: dkey(d), label: String(d.getDate()), rev: 0, profit: 0 });
+  }
+  return { out, keyOf: iso => dkey(iso) };
+}
+function chartSVG(bk) {
+  const W = 340, H = 170, top = 18, bot = 22, n = bk.length, slot = W / n, bw = Math.max(3, slot * .72);
+  const max = Math.max(1, ...bk.map(b => b.rev)), h = H - top - bot, step = Math.ceil(n / 8);
+  let g = `<text x="0" y="11" fill="#c9a89a" font-size="10">${brl(max)}</text><line x1="0" x2="${W}" y1="${H - bot}" y2="${H - bot}" stroke="#5b3329"/>`;
+  bk.forEach((b, i) => {
+    const x = i * slot + (slot - bw) / 2, rh = b.rev / max * h, ph = Math.max(0, b.profit) / max * h;
+    if (rh > 0) g += `<rect x="${x.toFixed(1)}" y="${(H - bot - rh).toFixed(1)}" width="${bw.toFixed(1)}" height="${rh.toFixed(1)}" rx="3" fill="#f2c14e"/>`;
+    if (ph > 0) g += `<rect x="${(x + bw * .2).toFixed(1)}" y="${(H - bot - ph).toFixed(1)}" width="${(bw * .6).toFixed(1)}" height="${ph.toFixed(1)}" rx="2" fill="#d9246f"/>`;
+    if (i % step === 0 || i === n - 1) g += `<text x="${(i * slot + slot / 2).toFixed(1)}" y="${H - 6}" fill="#c9a89a" font-size="10" text-anchor="middle">${b.label}</text>`;
+  });
+  return `<svg viewBox="0 0 ${W} ${H}" width="100%" role="img" aria-label="Gráfico do que você vendeu e do lucro">${g}</svg>`;
+}
+function vLucro() {
+  const sales = S.sales.filter(s => inPeriod(s.date));
+  const rev = sales.reduce((a, s) => a + s.total, 0), cost = sales.reduce((a, s) => a + s.cost, 0), profit = rev - cost;
+  const recebido = sales.filter(s => s.status === 'paid').reduce((a, s) => a + s.total, 0), areceber = rev - recebido;
+  const units = sales.reduce((a, s) => a + s.items.reduce((b, i) => b + i.qty, 0), 0);
+  const b = buckets(sales); sales.forEach(s => { const bb = b.out.find(x => x.key === b.keyOf(s.date)); if (bb) { bb.rev += s.total; bb.profit += s.total - s.cost; } });
+  const byP = {};
+  sales.forEach(s => s.items.forEach(i => { const o = byP[i.name] = byP[i.name] || { qty: 0, rev: 0, profit: 0 }; o.qty += i.qty; o.rev += i.total; o.profit += i.total - i.cost; }));
+  const rank = Object.entries(byP).sort((a, c) => c[1].profit - a[1].profit || c[1].rev - a[1].rev).slice(0, 8), mx = Math.max(1, ...rank.map(r => Math.max(r[1].profit, 0)));
+  const semCusto = S.products.some(p => !p.cost);
+  const P = (v, t) => `<button class="${period === v ? 'on' : ''}" data-a="period" data-v="${v}">${t}</button>`;
+  return head('Lucro') + `<div class="chipsrow">${P('7', '7 dias')}${P('30', '30 dias')}${P('month', 'Este mês')}${P('all', 'Tudo')}</div>
+  <div class="hero"><span>Meu lucro (o que vendi − o que paguei)</span><b>${brl(profit)}</b><span>${rev > 0 ? 'Margem de ' + Math.round(profit / rev * 100) + '%' : 'Sem vendas nesse período'}</span></div>
+  <div class="stats">
+    <div class="stat"><b>${brl(rev)}</b><span>vendi</span></div>
+    <div class="stat"><b>${brl(cost)}</b><span>paguei</span></div>
+    <div class="stat"><b>${units}</b><span>unidades</span></div>
+  </div>
+  <div class="stats" style="grid-template-columns:1fr 1fr">
+    <div class="stat"><b style="color:var(--green)">${brl(recebido)}</b><span>já recebi</span></div>
+    <div class="stat ${areceber ? 'warn' : ''}"><b>${brl(areceber)}</b><span>ainda vou receber</span></div>
+  </div>
+  ${semCusto ? '<div class="banner">💡 Tem produto sem o valor que você paga. Preencha em Mais → Preços e custos para o lucro ficar certo.</div>' : ''}
+  <div class="card"><h3>Quanto vendi e quanto lucrei</h3>${sales.length ? chartSVG(b.out) : '<div class="empty">Sem vendas nesse período</div>'}
+    <div class="legend"><span><i style="background:#f2c14e"></i>Vendi</span><span><i style="background:#d9246f"></i>Lucro</span></div>
+    <p class="muted" style="margin:8px 0 0">Vendas pendentes também entram na conta.</p></div>
+  <div class="card"><h3>Onde mais lucro</h3>${rank.length ? rank.map(([n, o]) => `<div style="margin-top:12px"><div class="line" style="border:0;padding:0"><span>${esc(short(n))} <span class="muted">· ${o.qty} un</span></span><b>${brl(o.profit)}</b></div><div class="bar"><i style="width:${Math.max(3, Math.max(o.profit, 0) / mx * 100)}%"></i></div></div>`).join('') : '<div class="empty">Sem vendas nesse período</div>'}</div>`;
+}
+
+/* ============ MAIS ============ */
+function vMais() {
+  const M = (v, ic, t, s) => `<button class="card menu" data-a="tab" data-v="${v}"><span class="ic">${ic}</span><div><b>${t}</b><small>${s}</small></div></button>`;
+  const nuvem = !cloudOn ? 'Ainda não ligado' : !META.uid ? 'Entre para guardar seus dados' : pillParts()[1].replace('☁️ ', '');
+  return head('Mais') + M('precos', '💰', 'Preços e custos', 'Quanto você paga e quanto vende') + M('entradas', '📦', 'Entradas de estoque', `${S.stockLog.length} lançamentos`) +
+    M('clientes', '👩', 'Clientes', `${S.customers.length} cadastrados`) + M('hist', '🧾', 'Histórico de vendas', `${S.sales.length} vendas`) +
+    M('nuvem', '☁️', 'Banco de dados', nuvem) + M('calc', '🧮', 'Calculadora', 'Preço ideal e troco') + M('backup', '💾', 'Backup e restaurar', 'Cópia extra dos dados');
+}
+function vPrecos() {
+  return sub('', 'Preços') + `<p class="muted" style="text-align:center;margin:0 0 6px">Paguei = valor de revendedora na Cacau Show. Vendo = preço pro cliente.</p>` +
+    S.products.map(p => `<div class="card" data-card="${p.id}"><h3>${esc(p.name)}</h3>
+      <div class="row2"><label>Paguei (R$)<input data-pf="cost" data-id="${p.id}" inputmode="decimal" value="${p.cost || ''}" placeholder="0,00"></label>
+      <label>Vendo por (R$)<input data-pf="price" data-id="${p.id}" inputmode="decimal" value="${p.price}"></label></div>
+      <p class="sub" style="margin-top:8px">Lucro por unidade: <b id="pl-${p.id}" style="color:var(--green)">${lucroTxt(p.cost, p.price)}</b></p></div>`).join('');
+}
+function vEntradas() {
+  const es = S.stockLog.slice().sort((a, b) => a.date < b.date ? 1 : a.date > b.date ? -1 : (a.at < b.at ? 1 : -1));
+  return sub('', 'Entradas') + (es.length ? es.map(e => `<div class="card prod"><div class="pinfo"><b>${esc(short(e.name))}</b><br><span class="muted">${fmtD(e.date)}</span></div>
+    <div style="text-align:right"><b style="font-size:20px;color:${e.qty > 0 ? 'var(--green)' : 'var(--red)'}">${e.qty > 0 ? '+' : ''}${e.qty}</b><br><button class="btn small danger" data-a="delentry" data-id="${e.id}" style="margin-top:4px">Desfazer</button></div></div>`).join('')
+    : '<div class="empty">Nenhuma entrada ainda. Lance na aba Estoque.</div>');
+}
+function vClientes() {
+  const cs = S.customers.slice().sort((a, b) => a.name.localeCompare(b.name));
+  return sub('', 'Clientes') + `<button class="btn wide primary" data-a="newcust" style="margin-top:0">+ Novo cliente</button>` +
+    (cs.length ? cs.map(c => {
+      const ss = S.sales.filter(s => s.customerId === c.id), tot = ss.reduce((a, s) => a + s.total, 0), pend = ss.filter(s => s.status === 'pending').reduce((a, s) => a + s.total, 0);
+      return `<div class="card prod" data-a="editcust" data-id="${c.id}"><div class="pinfo"><h3>${esc(c.name)}</h3><p class="sub">${esc(c.phone || 'sem telefone')}</p></div>
+        <div style="text-align:right"><b>${brl(tot)}</b><br><span class="muted">${ss.length} compras</span>${pend ? `<br><span class="pill pend">deve ${brl(pend)}</span>` : ''}</div></div>`;
+    }).join('') : '<div class="empty">Nenhum cliente ainda. Eles entram automaticamente ao vender.</div>');
+}
+function custSheet(id) {
+  const c = id ? cust(id) : { name: '', phone: '' };
+  sheet(`<h2>${id ? 'Editar cliente' : 'Novo cliente'}</h2><form data-form="cust" data-id="${id || ''}">
+    <label>Nome<input name="name" required value="${esc(c.name)}"></label>
+    <label>WhatsApp<input name="phone" inputmode="tel" placeholder="(11) 99999-9999" value="${esc(c.phone)}"></label>
+    <button class="btn primary wide">Salvar</button>
+    ${id ? `<button type="button" class="btn danger wide" data-a="delcust" data-id="${id}">Excluir cliente</button>` : ''}</form>`);
+}
+function vHist() {
+  const ss = S.sales.slice().sort((a, b) => a.date < b.date ? 1 : -1).slice(0, 150);
+  return sub('', 'Histórico') + (ss.length ? ss.map(s => `<div class="card prod" data-a="sale" data-id="${s.id}"><div class="pinfo"><span class="muted">${fmtDate(s.date)}${s.customerName ? ' · ' + esc(s.customerName) : ''}</span>
+    <div>${esc(itemsText(s))}</div></div><div style="text-align:right"><b>${brl(s.total)}</b><br><span class="pill ${s.status}">${s.status === 'paid' ? esc(s.method || 'Pago') : 'Pendente'}</span></div></div>`).join('') : '<div class="empty">Nenhuma venda registrada ainda.</div>');
+}
+function saleSheet(id) {
+  const s = S.sales.find(x => x.id === id); if (!s) return;
+  sheet(`<h2>Venda de ${fmtDate(s.date)}</h2>
+    ${s.customerName ? `<p class="muted">Cliente: ${esc(s.customerName)}</p>` : ''}
+    ${s.items.map(i => `<div class="line"><span>${i.qty}× ${esc(i.name)}</span><b>${brl(i.total)}</b></div>`).join('')}
+    ${s.discount ? `<div class="line"><span>Desconto</span><b>− ${brl(s.discount)}</b></div>` : ''}
+    <div class="totalrow"><span>Total</span><b>${brl(s.total)}</b></div>
+    <p class="muted">Paguei ${brl(s.cost)} · Lucro ${brl(s.total - s.cost)} · ${s.status === 'paid' ? 'Pago via ' + esc(s.method) : 'Pendente'}</p>
+    ${s.status === 'pending' ? `<button class="btn yellow wide" data-a="paysale" data-ids="${s.id}">Acertar pagamento</button>` : ''}
+    <button class="btn danger wide" data-a="delsale" data-id="${s.id}">Excluir venda (devolve ao estoque)</button>`);
+}
+function vCalc() {
+  return sub('', 'Calculadora') + `<div class="card" id="calc1"><h3>💰 Preço ideal</h3>
+    <label>Custo total dos ingredientes (R$)<input id="c1" inputmode="decimal" placeholder="ex: 60"></label>
+    <div class="row2"><label>Quantas unidades rende<input id="c2" inputmode="numeric" placeholder="ex: 20"></label>
+    <label>Embalagem por unidade (R$)<input id="c3" inputmode="decimal" placeholder="ex: 0,50"></label></div>
+    <div class="row2"><label>Margem desejada (%)<input id="c4" inputmode="numeric" placeholder="ex: 50"></label>
+    <label>Seu preço de venda (R$)<input id="c5" inputmode="decimal" placeholder="opcional"></label></div>
+    <div id="cres" class="muted" style="margin-top:12px">Preencha os campos acima.</div></div>
+  <div class="card" id="calc2"><h3>🪙 Troco</h3>
+    <div class="row2"><label>Valor da compra (R$)<input id="t1" inputmode="decimal"></label><label>Cliente deu (R$)<input id="t2" inputmode="decimal"></label></div>
+    <div id="tres" class="troco" style="font-size:20px"></div></div>`;
+}
+function calc() {
+  const c1 = num($('#c1').value), c2 = num($('#c2').value), c3 = num($('#c3').value), m = num($('#c4').value), c5 = num($('#c5').value);
+  let h = '';
+  if (c1 > 0 && c2 > 0) {
+    const cu = c1 / c2 + c3; h += `Custo por unidade: <b style="color:var(--cream)">${brl(cu)}</b><br>`;
+    if (m > 0 && m < 100) { const p = cu / (1 - m / 100); h += `Preço sugerido: <b style="color:var(--yellow);font-size:22px">${brl(p)}</b><br>Lucro por unidade: <b style="color:var(--green)">${brl(p - cu)}</b><br>`; }
+    if (c5 > 0) h += `No seu preço: lucro de <b style="color:var(--green)">${brl(c5 - cu)}</b> por unidade (margem de ${((c5 - cu) / c5 * 100).toFixed(0)}%)`;
+  }
+  $('#cres').innerHTML = h || 'Preencha os campos acima.';
+}
+function troco() {
+  const a = num($('#t1').value), b = num($('#t2').value);
+  $('#tres').textContent = (a > 0 && b > 0) ? (b >= a ? 'Troco: ' + brl(b - a) : 'Faltam ' + brl(a - b)) : '';
+}
+function vNuvem() {
+  let body;
+  if (!cloudOn) body = `<div class="card"><p>O banco de dados ainda não foi ligado.</p><p class="muted">Crie o projeto no Supabase (gratuito), cole a URL e a chave no arquivo <b>config.js</b> e publique de novo. O passo a passo está no <b>LEIA-ME.md</b>.</p></div>`;
+  else if (!META.uid) body = `<form class="card" data-form="login"><p>Entre com o e-mail e a senha que você criou no Supabase. Depois disso tudo que você lançar é guardado na nuvem automaticamente.</p>
+    <label>E-mail<input name="email" type="email" required autocomplete="username" autocapitalize="none"></label>
+    <label>Senha<input name="pass" type="password" required autocomplete="current-password"></label>
+    <button class="btn primary wide">Entrar</button></form>`;
+  else body = `<div class="card"><p>☁️ Conectada como <b>${esc(META.email || '')}</b></p>
+    <p class="muted">${syncErr ? '⚠️ ' + esc(syncErr) : META.dirty ? 'Tem alterações esperando para serem enviadas (precisa de internet).' : 'Tudo salvo na nuvem.'}
+    ${META.lastSync ? '<br>Última sincronização: ' + fmtDate(META.lastSync) : ''}</p>
+    <button class="btn primary wide" data-a="syncnow">Sincronizar agora</button>
+    <button class="btn danger wide" data-a="logout">Sair</button></div>`;
+  return sub('', 'Nuvem') + body + `<div class="card"><h3>Como funciona</h3><p class="muted">O app guarda tudo no celular e também envia para o seu banco de dados. Sem internet você continua lançando normalmente; quando a internet voltar, ele envia sozinho. Se trocar de celular ou apagar o app, é só entrar de novo que seus dados voltam.</p></div>`;
+}
+function vBackup() {
+  return sub('', 'Backup') + `<div class="card"><p>Uma cópia extra em arquivo, para guardar no iCloud, WhatsApp ou e-mail. Vale fazer de vez em quando, mesmo com o banco de dados ligado.</p>
+  <p class="muted">Último backup: ${S.lastBackup ? fmtDate(S.lastBackup) : 'nunca'}</p>
+  <button class="btn primary wide" data-a="export">Exportar backup</button>
+  <button class="btn wide" data-a="import">Restaurar de um backup</button></div>
+  <div class="card"><h3>Zona de perigo</h3><p class="muted">Apaga vendas, clientes e entradas e volta os produtos ao padrão${cloudOn && META.uid ? ' (e isso também vai para a nuvem)' : ''}.</p>
+  <button class="btn danger wide" data-a="reset">Apagar todos os dados</button></div>`;
+}
+async function exportBackup() {
+  const name = 'ribas-backup-' + dkey(new Date()) + '.json';
+  const blob = new Blob([JSON.stringify(S, null, 1)], { type: 'application/json' });
+  const mark = () => { S.lastBackup = new Date().toISOString(); save(); render(); };
+  try {
+    const file = new File([blob], name, { type: 'application/json' });
+    if (navigator.canShare && navigator.canShare({ files: [file] })) { await navigator.share({ files: [file], title: 'Backup Ribas Gourmet' }); return mark(); }
+  } catch (e) { if (e && e.name === 'AbortError') return; }
+  const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = name;
+  document.body.appendChild(a); a.click(); a.remove(); mark(); toast('Backup baixado');
+}
+
+/* ============ ações ============ */
+const actions = {
+  tab: d => { view = d.v; window.scrollTo(0, 0); render(); },
+  close: () => closeSheet(),
+  newprod: () => prodSheet(''), editprod: d => prodSheet(d.id),
+  delprod: d => { if (confirm('Excluir este produto? As vendas antigas continuam no histórico.')) { S.products = S.products.filter(p => p.id !== d.id); delete cart[d.id]; save(); closeSheet(); render(); } },
+  stockadd: d => stockSheet(d.id),
+  stockq: d => { $('#sq').value = d.q; },
+  stockapply: d => {
+    const q = int($('#sq').value); if (!q) return toast('Digite a quantidade');
+    const p = prod(fs.id), delta = q * +d.s;
+    p.stock += delta; logStock(p, delta, $('#sdate').value); save(); closeSheet(); render();
+    toast(delta > 0 ? '📦 Entrada lançada: +' + delta : 'Retirado: ' + delta);
+  },
+  stockset: () => {
+    const v = $('#sq').value; if (v === '') return toast('Digite o estoque certo no campo');
+    const p = prod(fs.id), delta = int(v) - p.stock; if (!delta) return closeSheet();
+    p.stock += delta; logStock(p, delta, $('#sdate').value); save(); closeSheet(); render();
+  },
+  delentry: d => {
+    const e = S.stockLog.find(x => x.id === d.id); if (!e || !confirm('Desfazer este lançamento? O estoque será ajustado.')) return;
+    const p = prod(e.pid); if (p) p.stock -= e.qty;
+    S.stockLog = S.stockLog.filter(x => x.id !== d.id); save(); render();
+  },
+  cartdelta: d => { const q = Math.max(0, (cart[d.id] || 0) + +d.d); if (q) cart[d.id] = q; else delete cart[d.id]; render(); },
+  clearcart: () => { cart = {}; render(); },
+  checkout: () => checkout(),
+  setstatus: d => { fs.status = d.v; document.querySelectorAll('#sstatus button').forEach(b => b.classList.toggle('on', b.dataset.v === d.v)); updateCheckout(); },
+  setmethod: d => { fs.method = d.v; document.querySelectorAll('#smethod button').forEach(b => b.classList.toggle('on', b.dataset.v === d.v)); updateCheckout(); },
+  confirmsale: () => confirmSale(),
+  paysale: d => paySheet(d.ids.split(',')),
+  dopay: d => { const now = new Date().toISOString(); S.sales.forEach(s => { if (payIds.includes(s.id)) { s.status = 'paid'; s.method = d.m; s.paidAt = now; } }); save(); closeSheet(); render(); toast('💰 Pagamento acertado!'); },
+  period: d => { period = d.v; render(); },
+  newcust: () => custSheet(''), editcust: d => custSheet(d.id),
+  delcust: d => { if (confirm('Excluir este cliente? As vendas dele continuam no histórico.')) { S.customers = S.customers.filter(c => c.id !== d.id); save(); closeSheet(); render(); } },
+  sale: d => saleSheet(d.id),
+  delsale: d => {
+    if (!confirm('Excluir esta venda e devolver os itens ao estoque?')) return;
+    const s = S.sales.find(x => x.id === d.id); s.items.forEach(i => { const p = prod(i.pid); if (p) p.stock += i.qty; });
+    S.sales = S.sales.filter(x => x.id !== d.id); save(); closeSheet(); render();
+  },
+  syncnow: () => syncNow(true),
+  logout: () => { if (confirm('Sair da nuvem? Os dados continuam neste celular.')) { META.access = META.refresh = META.uid = META.email = null; metaSave(); render(); } },
+  export: () => exportBackup(),
+  import: () => $('#imp').click(),
+  reset: () => { if (confirm('Apagar TODOS os dados? Isso não pode ser desfeito.') && confirm('Tem certeza mesmo? Faça um backup antes se tiver dúvida.')) { S = defaults(); cart = {}; save(); render(); toast('Dados apagados'); } }
+};
+const forms = {
+  prod(f, d) {
+    const o = { name: f.name.trim(), sub: (f.sub || '').trim(), price: num(f.price), cost: num(f.cost), min: int(f.min), promoQty: int(f.promoQty), promoPrice: num(f.promoPrice) };
+    if (d.id) Object.assign(prod(d.id), o);
+    else { const p = Object.assign({ id: uid(), stock: 0 }, o); S.products.push(p); const q = int(f.stock); if (q > 0) { p.stock = q; logStock(p, q); } }
+    save(); closeSheet(); render();
+  },
+  cust(f, d) {
+    if (d.id) Object.assign(cust(d.id), { name: f.name.trim(), phone: f.phone.trim() }); else S.customers.push({ id: uid(), name: f.name.trim(), phone: f.phone.trim() });
+    save(); closeSheet(); render();
+  },
+  async login(f) {
+    try { await login(f.email.trim(), f.pass); toast('☁️ Conectada!'); syncErr = ''; await syncNow(true); }
+    catch (e) { toast(e.message || 'Falha no login'); }
+    render();
+  }
+};
+
+document.addEventListener('click', e => {
+  if (e.target.id === 'ov') return closeSheet();
+  const t = e.target.closest('[data-a]'); if (!t) return;
+  const fn = actions[t.dataset.a]; if (fn) fn(t.dataset, t);
+});
+document.addEventListener('submit', e => {
+  const f = e.target.closest('form[data-form]'); if (!f) return;
+  e.preventDefault(); forms[f.dataset.form](Object.fromEntries(new FormData(f)), f.dataset);
+});
+document.addEventListener('input', e => {
+  const id = e.target.id;
+  if (id === 'fdisc' || id === 'frec') updateCheckout();
+  if (id === 'fname') { const v = e.target.value.trim().toLowerCase(); $('#newc').hidden = !v || S.customers.some(c => c.name.toLowerCase() === v); }
+  if (/^c[1-5]$/.test(id)) calc();
+  if (id === 't1' || id === 't2') troco();
+  if (e.target.dataset && e.target.dataset.pf) {
+    const card = e.target.closest('[data-card]'), p = prod(card.dataset.card);
+    p.cost = num(card.querySelector('[data-pf=cost]').value); p.price = num(card.querySelector('[data-pf=price]').value);
+    $('#pl-' + p.id).textContent = lucroTxt(p.cost, p.price); save();
+  }
+});
+$('#imp').addEventListener('change', e => {
+  const f = e.target.files[0]; if (!f) return;
+  const r = new FileReader();
+  r.onload = () => {
+    try {
+      const d = JSON.parse(r.result);
+      if (!d || !Array.isArray(d.products) || !Array.isArray(d.sales)) throw 0;
+      if (!confirm('Substituir os dados atuais pelo backup (' + d.sales.length + ' vendas)?')) return;
+      S = Object.assign(defaults(), d); save(); render(); toast('Backup restaurado!');
+    } catch (err) { toast('Arquivo de backup inválido'); }
+  };
+  r.readAsText(f); e.target.value = '';
+});
+document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') syncNow(); });
+window.addEventListener('online', () => syncNow());
+window.addEventListener('offline', updatePill);
+
+/* ============ render ============ */
+function render() {
+  const V = { estoque: vEstoque, vender: vVender, pend: vPend, lucro: vLucro, mais: vMais, precos: vPrecos, entradas: vEntradas, clientes: vClientes, hist: vHist, calc: vCalc, nuvem: vNuvem, backup: vBackup };
+  $('#app').innerHTML = V[view]();
+  const nav = ['precos', 'entradas', 'clientes', 'hist', 'calc', 'nuvem', 'backup'].includes(view) ? 'mais' : view;
+  document.querySelectorAll('nav button').forEach(b => b.classList.toggle('on', b.dataset.v === nav));
+  const n = S.sales.filter(s => s.status === 'pending').length, bd = $('#pbadge');
+  bd.hidden = !n; bd.textContent = n;
+  renderCartBar();
+}
+render();
+syncNow();
+if ('serviceWorker' in navigator && location.protocol.startsWith('http')) navigator.serviceWorker.register('sw.js').catch(() => {});
+</script>
+</body>
+</html>
