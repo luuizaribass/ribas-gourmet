@@ -1,5 +1,5 @@
 // Service worker: deixa o app funcionar offline (cache + atualiza em segundo plano)
-const CACHE = 'ribas-v3';
+const CACHE = 'ribas-v4';
 const ARQUIVOS = ['./', 'index.html', 'config.js', 'manifest.json', 'icon-180.png', 'icon-192.png', 'icon-512.png'];
 
 self.addEventListener('install', e => {
