@@ -757,7 +757,7 @@ function vMais() {
   const M = (v, ic, t, s) => [v, `<button class="card menu" data-a="tab" data-v="${v}" data-mk="${v}"><span class="ic">${ic}</span><div><b>${t}</b><small>${s}</small></div><span class="grip">⠿</span></button>`];
   const nuvem = !cloudOn ? 'Ainda não ligado' : !META.uid ? 'Entre para guardar seus dados' : pillParts()[1].replace('☁️ ', '');
   const items = [M('repor', '🔔', 'O que repor', reporSub()), M('precos', '💰', 'Preços e custos', 'Quanto você paga e quanto vende'), M('entradas', '📦', 'Entradas de estoque', `${S.stockLog.length} lançamentos`),
-    M('extrato', '📒', 'Extrato', 'Tudo que entrou e saiu de produtos'), M('invest', '🧰', 'Investimentos', S.invests.length ? brl(invTotal()) + ' investidos' : 'Bolsa térmica, embalagens…'),
+    M('extrato', '📒', 'Extrato', 'Tudo que entrou e saiu de produtos'), M('dados', '🏆', 'Mais vendidos', 'O que os clientes mais gostam'), M('invest', '🧰', 'Investimentos', S.invests.length ? brl(invTotal()) + ' investidos' : 'Bolsa térmica, embalagens…'),
     M('clientes', '👩', 'Clientes', `${S.customers.length} cadastrados`), M('hist', '🧾', 'Histórico de vendas', `${S.sales.length} vendas`),
     M('nuvem', '☁️', 'Banco de dados', nuvem), M('calc', '🧮', 'Calculadora', 'Igual à do iPhone'), M('backup', '💾', 'Backup e restaurar', 'Cópia extra dos dados')];
   const ord = Array.isArray(S.menuOrder) ? S.menuOrder : [], pos = k => { const i = ord.indexOf(k); return i < 0 ? 999 : i; };
@@ -1090,6 +1090,41 @@ function invSheet(id) {
     ${id ? `<button type="button" class="btn danger wide" data-a="delinv" data-id="${id}">Excluir</button>` : ''}</form>`);
 }
 
+/* ---------- Mais vendidos / dados ---------- */
+let dp = '30';
+function vDados() {
+  const st = rangeStart(dp), sales = S.sales.filter(x => !x.own && (!st || Date.parse(x.date) >= st.getTime()));
+  const units = x => x.items.reduce((a, i) => a + i.qty, 0);
+  const total = sales.reduce((a, x) => a + units(x), 0), rev = sales.reduce((a, x) => a + x.total, 0);
+  const byP = {}, byL = {}, byC = {}, byW = [0, 0, 0, 0, 0, 0, 0], byM = {};
+  sales.forEach(x => {
+    x.items.forEach(i => {
+      const o = byP[i.pid || i.name] = byP[i.pid || i.name] || { name: i.name, qty: 0, rev: 0 }; o.qty += i.qty; o.rev += i.total;
+      const q = prod(i.pid), ln = (q && q.line) || short(i.name); byL[ln] = (byL[ln] || 0) + i.qty;
+    });
+    byW[(new Date(x.date).getDay() + 6) % 7] += units(x);
+    const m = x.status === 'pending' ? 'Pendente' : (x.method || 'Outro'); byM[m] = (byM[m] || 0) + 1;
+    if (x.customerName) { const c = byC[x.customerName.toLowerCase()] = byC[x.customerName.toLowerCase()] || { name: x.customerName, n: 0, spent: 0, fav: {} }; c.n++; c.spent += x.total; x.items.forEach(i => { c.fav[i.name] = (c.fav[i.name] || 0) + i.qty; }); }
+  });
+  const top = Object.values(byP).sort((a, b) => b.qty - a.qty || b.rev - a.rev), mxp = Math.max(1, ...top.map(t => t.qty));
+  const lines = Object.entries(byL).sort((a, b) => b[1] - a[1]), mxl = Math.max(1, ...lines.map(l => l[1]));
+  const cl = Object.values(byC).sort((a, b) => b.spent - a.spent).slice(0, 8);
+  const days = ['Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb', 'Dom'], mxw = Math.max(1, ...byW), bestD = byW.indexOf(mxw);
+  const sold = new Set(Object.keys(byP)), parados = S.products.filter(q => !sold.has(q.id) && (q.stock > 0 || S.stockLog.some(e => e.pid === q.id)));
+  const pct = n => total ? Math.round(n / total * 100) + '%' : '';
+  const B = (n, mx) => `<div class="bar"><i style="width:${Math.max(3, n / mx * 100)}%"></i></div>`;
+  return sub('', 'Mais vendidos') + chipsFor(dp, 'dp') + (!sales.length ? '<div class="empty">Sem vendas nesse período.</div>' : `
+  <div class="hero"><span>🏆 O que mais sai</span><b>${esc(short(top[0].name))}</b><span>${top[0].qty} ${top[0].qty > 1 ? 'unidades' : 'unidade'} · ${pct(top[0].qty)} das vendas</span></div>
+  <div class="stats"><div class="stat"><b>${sales.length}</b><span>vendas</span></div><div class="stat"><b>${total}</b><span>unidades</span></div><div class="stat"><b>${brl(sales.length ? rev / sales.length : 0)}</b><span>média por venda</span></div></div>
+  <div class="card"><h3>Sabores mais vendidos</h3>${top.slice(0, 10).map((t, i) => `<div style="margin-top:12px"><div class="line" style="border:0;padding:0"><span>${i + 1}. ${esc(short(t.name))}</span><b>${t.qty} un</b></div>${B(t.qty, mxp)}<div class="muted">${pct(t.qty)} · vendi ${brl(t.rev)}</div></div>`).join('')}</div>
+  <div class="card"><h3>Por linha</h3>${lines.map(([n, q]) => `<div style="margin-top:12px"><div class="line" style="border:0;padding:0"><span>${esc(n)}</span><b>${q} un · ${pct(q)}</b></div>${B(q, mxl)}</div>`).join('')}</div>
+  <div class="card"><h3>Melhores clientes</h3>${cl.length ? cl.map(c => { const f = Object.entries(c.fav).sort((a, b) => b[1] - a[1])[0]; return `<div class="line"><div><b>${esc(c.name)}</b><div class="muted">${c.n} ${c.n > 1 ? 'compras' : 'compra'}${f ? ' · mais leva ' + esc(short(f[0])) : ''}</div></div><b>${brl(c.spent)}</b></div>`; }).join('') : '<div class="empty">Coloque o nome do cliente nas vendas para ver aqui.</div>'}</div>
+  <div class="card"><h3>Dia que mais vende</h3><p class="muted" style="margin:0 0 6px">${mxw ? 'Seu melhor dia: ' + days[bestD] + ' (' + mxw + ' un)' : ''}</p>
+    <div style="display:flex;gap:6px;align-items:flex-end;height:90px">${byW.map((v, i) => `<div style="flex:1;text-align:center;font-size:12px;color:var(--muted)"><div style="height:${Math.max(3, v / mxw * 64)}px;background:${i === bestD ? 'var(--yellow)' : 'var(--pink)'};border-radius:4px"></div>${days[i]}<br><b style="color:var(--cream)">${v}</b></div>`).join('')}</div></div>
+  <div class="card"><h3>Como pagam</h3>${Object.entries(byM).sort((a, b) => b[1] - a[1]).map(([m, n]) => `<div class="line"><span>${esc(m)}</span><b>${n} ${n > 1 ? 'vendas' : 'venda'}</b></div>`).join('')}</div>
+  ${parados.length ? `<div class="card"><h3>Não saíram nesse período</h3><p class="muted" style="margin:0">${parados.map(q => esc(short(q.name))).join(' · ')}</p></div>` : ''}`);
+}
+
 const CALC = { cur: '0', acc: null, op: null, fresh: true, lastOp: null, lastB: null, err: false };
 const cNum = () => parseFloat(CALC.cur);
 function cApply(a, b, o) { return o === '+' ? a + b : o === '−' ? a - b : o === '×' ? a * b : (b === 0 ? NaN : a / b); }
@@ -1247,6 +1282,7 @@ const actions = {
   },
   async sharerepor() { try { await navigator.share({ title: 'Lista para repor', text: reporText() }); } catch (e) {} },
   xp: d => { xp = d.v; render(); },
+  dp: d => { dp = d.v; render(); },
   xlsp: d => { xlsP = d.v; render(); },
   xlsx: () => exportXlsx(),
   cancelsale: d => {
@@ -1368,9 +1404,9 @@ window.addEventListener('offline', updatePill);
 
 /* ============ render ============ */
 function render() {
-  const V = { estoque: vEstoque, vender: vVender, pend: vPend, lucro: vLucro, mais: vMais, precos: vPrecos, entradas: vEntradas, extrato: vExtrato, repor: vRepor, invest: vInvest, clientes: vClientes, hist: vHist, calc: vCalc, nuvem: vNuvem, backup: vBackup };
+  const V = { estoque: vEstoque, vender: vVender, pend: vPend, lucro: vLucro, mais: vMais, precos: vPrecos, entradas: vEntradas, extrato: vExtrato, repor: vRepor, dados: vDados, invest: vInvest, clientes: vClientes, hist: vHist, calc: vCalc, nuvem: vNuvem, backup: vBackup };
   $('#app').innerHTML = V[view]();
-  const nav = ['invest', 'repor', 'precos', 'entradas', 'extrato', 'clientes', 'hist', 'calc', 'nuvem', 'backup'].includes(view) ? 'mais' : view;
+  const nav = ['dados', 'invest', 'repor', 'precos', 'entradas', 'extrato', 'clientes', 'hist', 'calc', 'nuvem', 'backup'].includes(view) ? 'mais' : view;
   document.querySelectorAll('nav button').forEach(b => b.classList.toggle('on', b.dataset.v === nav));
   const n = S.sales.filter(s => s.status === 'pending').length, bd = $('#pbadge');
   bd.hidden = !n; bd.textContent = n;
