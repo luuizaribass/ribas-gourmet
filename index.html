@@ -130,6 +130,10 @@ input[type=date]{min-height:48px}
 .menu span.ic{font-size:26px}
 .menu small{display:block;color:var(--muted);font-weight:500}
 .empty{text-align:center;color:var(--muted);padding:26px 10px}
+.gh{display:flex;justify-content:space-between;align-items:baseline;width:100%;background:none;border:0;color:var(--yellow);font-weight:800;font-size:18px;padding:16px 4px 4px;text-align:left;cursor:pointer}
+.gh small{color:var(--muted);font-weight:600;font-size:12px}
+.card.tight{padding:10px 12px;margin:6px 0}
+.card.tight h3{font-size:16px}
 .legend{display:flex;gap:14px;font-size:12px;color:var(--muted);margin-top:6px}
 .legend i{display:inline-block;width:10px;height:10px;border-radius:3px;margin-right:5px}
 .banner{background:#5a2a14;border:1px solid var(--orange);color:var(--cream);border-radius:14px;padding:10px 12px;font-size:13px;margin:8px 0}
@@ -169,27 +173,39 @@ const short = n => n.replace(/^Trufa /, '');
 const lucroTxt = (c, p) => (c > 0 && p > 0) ? brl(p - c) + ' (' + Math.round((p - c) / p * 100) + '%)' : '—';
 
 /* ============ dados ============ */
+const LINE_INFO = {
+  'Tabletinho 5g': 'R$2,00 · 3 por R$5,00 (pode misturar sabores)',
+  'Trufa Bless': 'Zero adição de açúcar e zero lactose'
+};
 function defaults() {
-  const P = (name, sub, price, extra) => Object.assign({ id: uid(), name, sub, price, cost: 0, stock: 0, min: 5, promoQty: 0, promoPrice: 0 }, extra || {});
-  return {
-    v: 2,
-    products: [
-      P('Tabletinho 5g', 'Ao leite · Branca · Café · Menta · 55% · 70%', 2, { promoQty: 3, promoPrice: 5, min: 10 }),
-      P('Trufa Bless', 'Zero açúcar e zero lactose · Ao leite · Branca · Morango · Pistache', 8.5),
-      P('Trufa Dreams', 'Cereja ao licor · Marula · Petit Gâteau', 8),
-      P('Trufa Mil-folhas', 'Tradicional · Avelã', 7.5),
-      P('Trufa Lanut', 'Avelã · Pistache', 7.5),
-      P('Trufa Lacreme', 'Ao leite · Branca · Avelã · 70% · Kids · Pistache', 5.5),
-      P('Trufa Tradicional', 'Ao leite · Branca · Mezzo', 6.5),
-      P('Trufa Variadas', 'Torta de limão · Maracujá · Morango · Coco · 55% · Paçoca · Menta · Speculoos', 7)
-    ],
-    customers: [], sales: [], stockLog: [], lastBackup: null
-  };
+  const out = [];
+  const L = (line, price, items, extra) => items.forEach(([flavor, cost]) => out.push(Object.assign(
+    { id: uid(), line, flavor, name: line + ' ' + flavor, price, cost, stock: 0, min: 3, promoQty: 0, promoPrice: 0, promoGroup: '' }, extra || {})));
+  L('Tabletinho 5g', 2, [['Ao leite', 1.12], ['Branca', 1.12], ['Café', 1.12], ['Menta', 1.12], ['55%', 1.12], ['70%', 1.12]], { promoQty: 3, promoPrice: 5, promoGroup: 'tabletinho' });
+  L('Trufa Bless', 8.5, [['Ao leite', 5.6], ['Branca', 5.6], ['Morango', 5.6], ['Pistache', 6.39]]);
+  L('Trufa Dreams', 8, [['Cereja ao licor', 6.49], ['Marula', 6.49], ['Petit Gâteau', 0]]);
+  L('Trufa Mil-folhas', 7.5, [['Tradicional', 6.49], ['Avelã', 6.49]]);
+  L('Trufa Lanut', 7.5, [['Avelã', 6.49], ['Pistache', 6.49]]);
+  L('Trufa Lacreme', 5.5, [['Ao leite', 3.79], ['Branca', 3.79], ['Avelã', 3.79], ['70%', 3.79], ['Kids', 0], ['Pistache', 0]]);
+  L('Trufa Tradicional', 6.5, [['Ao leite', 0], ['Branca', 0], ['Mezzo', 5.29]]);
+  L('Trufa Variadas', 7, [['Torta de limão', 5.29], ['Maracujá', 5.29], ['Morango', 5.29], ['Coco', 5.29], ['55%', 5.29], ['Paçoca', 0], ['Menta', 0], ['Speculoos', 0]]);
+  return { v: 4, products: out, customers: [], sales: [], stockLog: [], lastBackup: null };
+}
+function migrate(st) {
+  if ((st.v || 0) < 3) {
+    if (!(st.sales && st.sales.length) && !(st.stockLog && st.stockLog.length)) st.products = defaults().products;
+    st.v = 3;
+  }
+  if (st.v < 4) {
+    st.products.forEach(p => { if (p.line === 'Trufa Dreams' && p.flavor === 'Petit Gâteau' && p.price === 7.5) p.price = 8; });
+    st.v = 4;
+  }
+  return st;
 }
 function load() {
   try {
     const r = localStorage.getItem(KEY);
-    if (r) { const d = JSON.parse(r); if (d && Array.isArray(d.products)) return Object.assign(defaults(), d); }
+    if (r) { const d = JSON.parse(r); if (d && Array.isArray(d.products)) return migrate(Object.assign(defaults(), d)); }
   } catch (e) {}
   return defaults();
 }
@@ -207,15 +223,46 @@ function lineTotal(p, q) {
   if (p.promoQty > 0 && p.promoPrice > 0) return Math.floor(q / p.promoQty) * p.promoPrice + (q % p.promoQty) * p.price;
   return q * p.price;
 }
+const r2 = n => Math.round(n * 100) / 100;
+// itens do carrinho com o total de cada um (a promoção do tabletinho soma todos os sabores)
+function cartLines() {
+  const lines = Object.entries(cart).filter(([id]) => prod(id)).map(([id, q]) => ({ p: prod(id), q, total: 0 }));
+  const gr = {};
+  lines.forEach(l => {
+    if (l.p.promoQty > 0 && l.p.promoPrice > 0 && l.p.promoGroup) (gr[l.p.promoGroup] = gr[l.p.promoGroup] || []).push(l);
+    else l.total = r2(lineTotal(l.p, l.q));
+  });
+  Object.values(gr).forEach(ls => {
+    const p0 = ls[0].p, Q = ls.reduce((a, l) => a + l.q, 0);
+    const tot = Math.floor(Q / p0.promoQty) * p0.promoPrice + (Q % p0.promoQty) * p0.price;
+    let rem = r2(tot);
+    ls.forEach((l, i) => { const sh = i === ls.length - 1 ? rem : r2(tot * l.q / Q); l.total = sh; rem = r2(rem - sh); });
+  });
+  return lines;
+}
+function groups() {
+  const m = new Map();
+  S.products.forEach(p => { const k = p.line || p.name; if (!m.has(k)) m.set(k, []); m.get(k).push(p); });
+  return [...m];
+}
+const flavorOf = p => p.flavor || p.name;
 const itemsText = s => s.items.map(i => i.qty + '× ' + short(i.name)).join(', ');
+let col = {};
+const isOpen = k => !col[k];
+const gh = (v, line, extra) => `<button class="gh" data-a="toggle" data-k="${esc(v + ':' + line)}"><span>${isOpen(v + ':' + line) ? '▾' : '▸'} ${esc(line)}</span><small>${extra || ''}</small></button>`;
 
 /* ============ banco de dados na nuvem (Supabase) ============ */
-const CFG = window.RIBAS_CONFIG || {};
-const cloudOn = !!(CFG.url && CFG.key);
-const BASE = cloudOn ? CFG.url.replace(/\/+$/, '') : '';
 const META_KEY = 'ribas_meta_v1';
 let META = (() => { try { return JSON.parse(localStorage.getItem(META_KEY)) || {}; } catch (e) { return {}; } })();
 const metaSave = () => { try { localStorage.setItem(META_KEY, JSON.stringify(META)); } catch (e) {} };
+let CFG = {}, cloudOn = false, BASE = '';
+function applyCfg() {
+  const c = window.RIBAS_CONFIG || {};
+  CFG = { url: (c.url || META.cfgUrl || '').trim(), key: (c.key || META.cfgKey || '').trim() };
+  cloudOn = !!(CFG.url && CFG.key);
+  BASE = cloudOn ? CFG.url.replace(/\/+$/, '') : '';
+}
+applyCfg();
 let syncing = false, syncTimer = null, syncErr = '';
 
 function save() {
@@ -229,7 +276,7 @@ function scheduleSync() {
   clearTimeout(syncTimer); syncTimer = setTimeout(() => syncNow(), 1500);
 }
 function pillParts() {
-  if (!cloudOn) return ['', '☁️ off'];
+  if (!cloudOn) return ['', '☁️ ligar'];
   if (!META.uid) return ['', '☁️ entrar'];
   if (syncErr) return ['err', '☁️ erro'];
   if (META.dirty) return ['pend', navigator.onLine === false ? '☁️ sem net' : '☁️ enviando…'];
@@ -254,6 +301,13 @@ async function login(email, pass) {
   const r = await authPost('password', { email, password: pass });
   if (!r.ok) throw new Error(r.j.error_description || r.j.msg || 'E-mail ou senha incorretos');
   setSession(r.j);
+}
+async function signup(email, pass) {
+  const r = await fetch(BASE + '/auth/v1/signup', { method: 'POST', headers: { apikey: CFG.key, 'Content-Type': 'application/json' }, body: JSON.stringify({ email, password: pass }) });
+  let j = {}; try { j = await r.json(); } catch (e) {}
+  if (!r.ok) throw new Error(j.msg || j.error_description || j.message || 'Não consegui criar a conta');
+  if (j.access_token) { setSession(j); return true; }
+  return false;
 }
 async function token() {
   if (!META.access) throw new Error('Faça login');
@@ -294,7 +348,7 @@ async function syncNow(manual) {
     if (!rem || lt > rt) await pushLocal();
     else if (rt > lt) {
       if (META.dirty && !confirm('Os dados da nuvem são mais novos que os deste celular.\n\nOK = usar os da nuvem\nCancelar = manter os do celular e enviar')) await pushLocal();
-      else { S = Object.assign(defaults(), rem.data); if (!S.updatedAt) S.updatedAt = rem.updated_at; persistLocal(); META.dirty = false; render(); }
+      else { S = migrate(Object.assign(defaults(), rem.data)); if (!S.updatedAt) S.updatedAt = rem.updated_at; persistLocal(); META.dirty = false; render(); }
     } else META.dirty = false;
     META.lastSync = new Date().toISOString(); syncErr = ''; metaSave();
     if (manual) toast('☁️ Tudo sincronizado');
@@ -325,39 +379,39 @@ function backupBanner() {
   if (d < 7) return '';
   return `<div class="banner">💾 Seus dados estão só neste celular. ${cloudOn ? '<b data-a="tab" data-v="nuvem" style="text-decoration:underline">Entre no banco de dados</b>' : '<b data-a="tab" data-v="backup" style="text-decoration:underline">Faça um backup</b>'}.</div>`;
 }
+function stockCard(p, tr) {
+  const t = tr.has(p.id), cls = !t ? '' : p.stock <= 0 ? 'zero' : p.stock <= p.min ? 'low' : '';
+  const tag = !t ? '' : p.stock <= 0 ? '<span class="chip red">Esgotado</span>' : p.stock <= p.min ? '<span class="chip orange">Acabando</span>' : '';
+  return `<div class="card tight prod">
+    <div class="pinfo" data-a="editprod" data-id="${p.id}"><h3>${esc(flavorOf(p))}</h3>
+      <div class="chips" style="margin-top:6px"><span class="chip">${brl(p.price)}</span>
+        ${p.cost > 0 ? `<span class="chip green">lucro ${brl(p.price - p.cost)}</span>` : '<span class="chip dim">sem custo</span>'}${tag}</div></div>
+    <div class="stockcol"><button class="num ${cls}" data-a="stockadd" data-id="${p.id}">${p.stock}</button>
+      <button class="btn small primary" data-a="stockadd" data-id="${p.id}">+ Lançar</button></div></div>`;
+}
 function vEstoque() {
-  const ps = S.products;
+  const ps = S.products, tr = new Set(S.stockLog.map(e => e.pid));
   const units = ps.reduce((a, p) => a + Math.max(0, p.stock), 0);
   const val = ps.reduce((a, p) => a + Math.max(0, p.stock) * (p.cost || 0), 0);
-  const low = ps.filter(p => p.stock <= p.min).length;
+  const low = ps.filter(p => tr.has(p.id) && p.stock <= p.min).length;
   return head('Estoque') + backupBanner() + `
   <div class="stats">
     <div class="stat"><b>${units}</b><span>unidades</span></div>
     <div class="stat"><b>${brl(val)}</b><span>pago no estoque</span></div>
     <div class="stat ${low ? 'warn' : ''}"><b>${low}</b><span>acabando</span></div>
-  </div>` + (ps.map(p => {
-    const cls = p.stock <= 0 ? 'zero' : p.stock <= p.min ? 'low' : '';
-    const tag = p.stock <= 0 ? '<span class="chip red">Esgotado</span>' : p.stock <= p.min ? '<span class="chip orange">Acabando</span>' : '';
-    return `<div class="card prod">
-      <div class="pinfo" data-a="editprod" data-id="${p.id}">
-        <h3>${esc(p.name)}</h3><p class="sub">${esc(p.sub)}</p>
-        <div class="chips"><span class="chip">${brl(p.price)}</span>
-          ${p.promoQty > 0 ? `<span class="chip pink">${p.promoQty} por ${brl(p.promoPrice)}</span>` : ''}
-          ${p.cost > 0 ? `<span class="chip green">lucro ${brl(p.price - p.cost)}</span>` : '<span class="chip dim">sem custo</span>'}${tag}</div>
-      </div>
-      <div class="stockcol">
-        <button class="num ${cls}" data-a="stockadd" data-id="${p.id}">${p.stock}</button>
-        <button class="btn small primary" data-a="stockadd" data-id="${p.id}">+ Lançar</button>
-      </div></div>`;
-  }).join('')) + `<button class="btn wide primary" data-a="newprod">+ Novo produto</button>
-  <p class="muted" style="text-align:center;margin-top:14px">Toque em “+ Lançar” para registrar uma entrada com a data. O estoque baixa sozinho a cada venda.</p>`;
+  </div>` + groups().map(([line, items]) => {
+    const tot = items.reduce((a, p) => a + Math.max(0, p.stock), 0), open = isOpen('estoque:' + line);
+    return gh('estoque', line, tot + ' un') + (open ? (LINE_INFO[line] ? `<p class="sub" style="margin:0 4px 4px">${esc(LINE_INFO[line])}</p>` : '') + items.map(p => stockCard(p, tr)).join('') : '');
+  }).join('') + `<button class="btn wide primary" data-a="newprod">+ Novo sabor / produto</button>
+  <p class="muted" style="text-align:center;margin-top:14px">Toque em “+ Lançar” para registrar uma entrada com a data. O estoque baixa sozinho a cada venda. Toque no sabor para editar custo e preço.</p>`;
 }
 function prodSheet(id) {
-  const p = id ? prod(id) : { name: '', sub: '', price: '', cost: '', stock: 0, min: 5, promoQty: '', promoPrice: '' };
-  sheet(`<h2>${id ? 'Editar produto' : 'Novo produto'}</h2>
+  const p = id ? prod(id) : { line: '', flavor: '', price: '', cost: '', min: 3, promoQty: '', promoPrice: '', promoGroup: '' };
+  sheet(`<h2>${id ? 'Editar sabor' : 'Novo sabor / produto'}</h2>
   <form data-form="prod" data-id="${id || ''}">
-    <label>Nome<input name="name" required value="${esc(p.name)}"></label>
-    <label>Sabores / descrição<input name="sub" value="${esc(p.sub)}"></label>
+    <label>Linha (ex: Trufa Lacreme)<input name="line" required list="llist" value="${esc(p.line)}"></label>
+    <datalist id="llist">${groups().map(([l]) => `<option value="${esc(l)}">`).join('')}</datalist>
+    <label>Sabor<input name="flavor" required value="${esc(p.flavor)}"></label>
     <div class="row2">
       <label>Paguei (custo) R$<input name="cost" inputmode="decimal" value="${p.cost || ''}"></label>
       <label>Vendo por R$<input name="price" inputmode="decimal" required value="${p.price}"></label>
@@ -370,8 +424,9 @@ function prodSheet(id) {
       <label>Promoção: quantidade<input name="promoQty" inputmode="numeric" placeholder="ex: 3" value="${p.promoQty || ''}"></label>
       <label>Promoção: preço total<input name="promoPrice" inputmode="decimal" placeholder="ex: 5" value="${p.promoPrice || ''}"></label>
     </div>
+    <label>Grupo da promoção (sabores com o mesmo nome somam)<input name="promoGroup" placeholder="ex: tabletinho" value="${esc(p.promoGroup || '')}"></label>
     <button class="btn primary wide">Salvar</button>
-    ${id ? `<button type="button" class="btn danger wide" data-a="delprod" data-id="${id}">Excluir produto</button>` : ''}
+    ${id ? `<button type="button" class="btn danger wide" data-a="delprod" data-id="${id}">Excluir sabor</button>` : ''}
   </form>`);
 }
 function stockSheet(id) {
@@ -396,24 +451,26 @@ function logStock(p, qty, date) {
 }
 
 /* ============ VENDER ============ */
-const cartSubtotal = () => Object.entries(cart).reduce((a, [id, q]) => a + (prod(id) ? lineTotal(prod(id), q) : 0), 0);
+const cartSubtotal = () => r2(cartLines().reduce((a, l) => a + l.total, 0));
 const cartCount = () => Object.values(cart).reduce((a, q) => a + q, 0);
 function vVender() {
-  return head('Vender') + `<p class="muted" style="text-align:center;margin:0 0 6px">Toque no + para montar a compra</p>` +
-    S.products.map(p => {
-      const q = cart[p.id] || 0;
-      return `<div class="card sale ${q ? 'on' : ''}">
-        <div class="pinfo"><h3>${esc(p.name)}</h3>
-          <div class="chips"><span class="chip">${brl(p.price)}</span>
-          ${p.promoQty > 0 ? `<span class="chip pink">${p.promoQty} por ${brl(p.promoPrice)}</span>` : ''}
-          <span class="chip dim">${p.stock} em estoque</span></div>
-          ${q ? `<p class="sub" style="margin-top:6px">${q}× = <b>${brl(lineTotal(p, q))}</b></p>` : ''}
-        </div>
-        <div class="step">
-          <button class="round ${q ? '' : 'off'}" data-a="cartdelta" data-id="${p.id}" data-d="-1">−</button>
-          <b>${q}</b>
-          <button class="round" data-a="cartdelta" data-id="${p.id}" data-d="1">+</button>
-        </div></div>`;
+  const byId = {}; cartLines().forEach(l => { byId[l.p.id] = l; });
+  return head('Vender') + `<p class="muted" style="text-align:center;margin:0 0 2px">Toque no + para montar a compra</p>` +
+    groups().map(([line, items]) => {
+      const q = items.reduce((a, p) => a + (cart[p.id] || 0), 0), t = items.reduce((a, p) => a + (byId[p.id] ? byId[p.id].total : 0), 0);
+      const promo = items.find(p => p.promoQty > 0 && p.promoPrice > 0 && p.promoGroup);
+      const extra = q ? `<b style="color:var(--yellow)">${q} · ${brl(t)}</b>` : (promo ? `${promo.promoQty} por ${brl(promo.promoPrice)}` : '');
+      return gh('vender', line, extra) + (isOpen('vender:' + line) ? items.map(p => {
+        const n = cart[p.id] || 0;
+        return `<div class="card tight sale ${n ? 'on' : ''}">
+          <div class="pinfo"><h3>${esc(flavorOf(p))}</h3>
+            <div class="chips" style="margin-top:4px"><span class="chip">${brl(p.price)}</span><span class="chip dim">${p.stock} em estoque</span></div></div>
+          <div class="step">
+            <button class="round ${n ? '' : 'off'}" data-a="cartdelta" data-id="${p.id}" data-d="-1">−</button>
+            <b>${n}</b>
+            <button class="round" data-a="cartdelta" data-id="${p.id}" data-d="1">+</button>
+          </div></div>`;
+      }).join('') : '');
     }).join('') || '<div class="empty">Cadastre produtos na aba Estoque.</div>';
 }
 function renderCartBar() {
@@ -459,14 +516,11 @@ function updateCheckout() {
   return total;
 }
 function confirmSale() {
-  const sub = cartSubtotal(); if (!sub) return;
-  const disc = Math.min(num($('#fdisc').value), sub), total = Math.max(0, sub - disc);
+  const lines = cartLines(), sub = r2(lines.reduce((a, l) => a + l.total, 0)); if (!sub) return;
+  const disc = Math.min(num($('#fdisc').value), sub), total = r2(Math.max(0, sub - disc));
   const nameIn = $('#fname').value.trim();
   if (fs.status === 'pending' && !nameIn) return toast('Venda não paga precisa do nome do cliente');
-  for (const [id, q] of Object.entries(cart)) {
-    const p = prod(id);
-    if (p && p.stock < q && !confirm(`Estoque de ${p.name} é ${p.stock}. Vender ${q} mesmo assim?`)) return;
-  }
+  for (const l of lines) if (l.p.stock < l.q && !confirm(`Estoque de ${l.p.name} é ${l.p.stock}. Vender ${l.q} mesmo assim?`)) return;
   let cid = null, cname = '';
   if (nameIn) {
     let c = S.customers.find(x => x.name.toLowerCase() === nameIn.toLowerCase());
@@ -475,13 +529,11 @@ function confirmSale() {
   }
   const ds = $('#fdate').value || dkey(new Date());
   const when = ds === dkey(new Date()) ? new Date() : new Date(ds + 'T12:00:00');
-  const items = Object.entries(cart).filter(([id]) => prod(id)).map(([id, q]) => {
-    const p = prod(id); return { pid: id, name: p.name, qty: q, total: lineTotal(p, q), cost: q * (p.cost || 0) };
-  });
+  const items = lines.map(l => ({ pid: l.p.id, name: l.p.name, qty: l.q, total: l.total, cost: r2(l.q * (l.p.cost || 0)) }));
   items.forEach(i => { prod(i.pid).stock -= i.qty; });
   S.sales.push({
     id: uid(), date: when.toISOString(), items, subtotal: sub, discount: disc, total,
-    cost: items.reduce((a, i) => a + i.cost, 0), customerId: cid, customerName: cname,
+    cost: r2(items.reduce((a, i) => a + i.cost, 0)), customerId: cid, customerName: cname,
     status: fs.status, method: fs.status === 'paid' ? fs.method : '', paidAt: fs.status === 'paid' ? when.toISOString() : null
   });
   save(); cart = {}; closeSheet(); render();
@@ -565,12 +617,13 @@ function vLucro() {
   const units = sales.reduce((a, s) => a + s.items.reduce((b, i) => b + i.qty, 0), 0);
   const b = buckets(sales); sales.forEach(s => { const bb = b.out.find(x => x.key === b.keyOf(s.date)); if (bb) { bb.rev += s.total; bb.profit += s.total - s.cost; } });
   const byP = {};
-  sales.forEach(s => s.items.forEach(i => { const o = byP[i.name] = byP[i.name] || { qty: 0, rev: 0, profit: 0 }; o.qty += i.qty; o.rev += i.total; o.profit += i.total - i.cost; }));
-  const rank = Object.entries(byP).sort((a, c) => c[1].profit - a[1].profit || c[1].rev - a[1].rev).slice(0, 8), mx = Math.max(1, ...rank.map(r => Math.max(r[1].profit, 0)));
-  const semCusto = S.products.some(p => !p.cost);
+  sales.forEach(s => s.items.forEach(i => { const o = byP[i.name] = byP[i.name] || { qty: 0, rev: 0, cost: 0 }; o.qty += i.qty; o.rev += i.total; o.cost += i.cost; }));
+  const rank = Object.entries(byP).map(([n, o]) => [n, Object.assign(o, { profit: o.rev - o.cost })]).sort((a, c) => c[1].profit - a[1].profit || c[1].rev - a[1].rev);
+  const mx = Math.max(1, ...rank.map(r => Math.max(r[1].profit, 0)));
+  const semCusto = S.products.filter(p => !p.cost).length;
   const P = (v, t) => `<button class="${period === v ? 'on' : ''}" data-a="period" data-v="${v}">${t}</button>`;
   return head('Lucro') + `<div class="chipsrow">${P('7', '7 dias')}${P('30', '30 dias')}${P('month', 'Este mês')}${P('all', 'Tudo')}</div>
-  <div class="hero"><span>Meu lucro (o que vendi − o que paguei)</span><b>${brl(profit)}</b><span>${rev > 0 ? 'Margem de ' + Math.round(profit / rev * 100) + '%' : 'Sem vendas nesse período'}</span></div>
+  <div class="hero"><span>Meu lucro completo (o que vendi − o que paguei)</span><b>${brl(profit)}</b><span>${rev > 0 ? 'Margem de ' + Math.round(profit / rev * 100) + '%' : 'Sem vendas nesse período'}</span></div>
   <div class="stats">
     <div class="stat"><b>${brl(rev)}</b><span>vendi</span></div>
     <div class="stat"><b>${brl(cost)}</b><span>paguei</span></div>
@@ -580,11 +633,12 @@ function vLucro() {
     <div class="stat"><b style="color:var(--green)">${brl(recebido)}</b><span>já recebi</span></div>
     <div class="stat ${areceber ? 'warn' : ''}"><b>${brl(areceber)}</b><span>ainda vou receber</span></div>
   </div>
-  ${semCusto ? '<div class="banner">💡 Tem produto sem o valor que você paga. Preencha em Mais → Preços e custos para o lucro ficar certo.</div>' : ''}
+  ${semCusto ? `<div class="banner">💡 ${semCusto} ${semCusto > 1 ? 'sabores estão' : 'sabor está'} sem o valor que você paga, então o lucro deles aparece maior que o real. Preencha em Mais → Preços e custos.</div>` : ''}
   <div class="card"><h3>Quanto vendi e quanto lucrei</h3>${sales.length ? chartSVG(b.out) : '<div class="empty">Sem vendas nesse período</div>'}
     <div class="legend"><span><i style="background:#f2c14e"></i>Vendi</span><span><i style="background:#d9246f"></i>Lucro</span></div>
     <p class="muted" style="margin:8px 0 0">Vendas pendentes também entram na conta.</p></div>
-  <div class="card"><h3>Onde mais lucro</h3>${rank.length ? rank.map(([n, o]) => `<div style="margin-top:12px"><div class="line" style="border:0;padding:0"><span>${esc(short(n))} <span class="muted">· ${o.qty} un</span></span><b>${brl(o.profit)}</b></div><div class="bar"><i style="width:${Math.max(3, Math.max(o.profit, 0) / mx * 100)}%"></i></div></div>`).join('') : '<div class="empty">Sem vendas nesse período</div>'}</div>`;
+  <div class="card"><h3>Lucro de cada item</h3>${rank.length ? rank.map(([n, o]) => `<div style="margin-top:12px"><div class="line" style="border:0;padding:0"><span>${esc(short(n))}</span><b>${brl(o.profit)}</b></div>
+    <div class="muted">${o.qty} un · vendi ${brl(o.rev)} · paguei ${brl(o.cost)}</div><div class="bar"><i style="width:${Math.max(3, Math.max(o.profit, 0) / mx * 100)}%"></i></div></div>`).join('') : '<div class="empty">Sem vendas nesse período</div>'}</div>`;
 }
 
 /* ============ MAIS ============ */
@@ -596,11 +650,11 @@ function vMais() {
     M('nuvem', '☁️', 'Banco de dados', nuvem) + M('calc', '🧮', 'Calculadora', 'Preço ideal e troco') + M('backup', '💾', 'Backup e restaurar', 'Cópia extra dos dados');
 }
 function vPrecos() {
-  return sub('', 'Preços') + `<p class="muted" style="text-align:center;margin:0 0 6px">Paguei = valor de revendedora na Cacau Show. Vendo = preço pro cliente.</p>` +
-    S.products.map(p => `<div class="card" data-card="${p.id}"><h3>${esc(p.name)}</h3>
+  return sub('', 'Preços') + `<p class="muted" style="text-align:center;margin:0 0 2px">Paguei = quanto você pagou na Cacau Show. Vendo = preço pro cliente. Se mudar o custo, vale só para as vendas novas: as antigas guardam o que você pagou na época.</p>` +
+    groups().map(([line, items]) => gh('precos', line, '') + (isOpen('precos:' + line) ? items.map(p => `<div class="card tight" data-card="${p.id}"><h3>${esc(flavorOf(p))}</h3>
       <div class="row2"><label>Paguei (R$)<input data-pf="cost" data-id="${p.id}" inputmode="decimal" value="${p.cost || ''}" placeholder="0,00"></label>
       <label>Vendo por (R$)<input data-pf="price" data-id="${p.id}" inputmode="decimal" value="${p.price}"></label></div>
-      <p class="sub" style="margin-top:8px">Lucro por unidade: <b id="pl-${p.id}" style="color:var(--green)">${lucroTxt(p.cost, p.price)}</b></p></div>`).join('');
+      <p class="sub" style="margin-top:8px">Lucro por unidade: <b id="pl-${p.id}" style="color:var(--green)">${lucroTxt(p.cost, p.price)}</b></p></div>`).join('') : '')).join('');
 }
 function vEntradas() {
   const es = S.stockLog.slice().sort((a, b) => a.date < b.date ? 1 : a.date > b.date ? -1 : (a.at < b.at ? 1 : -1));
@@ -669,11 +723,17 @@ function troco() {
 }
 function vNuvem() {
   let body;
-  if (!cloudOn) body = `<div class="card"><p>O banco de dados ainda não foi ligado.</p><p class="muted">Crie o projeto no Supabase (gratuito), cole a URL e a chave no arquivo <b>config.js</b> e publique de novo. O passo a passo está no <b>LEIA-ME.md</b>.</p></div>`;
-  else if (!META.uid) body = `<form class="card" data-form="login"><p>Entre com o e-mail e a senha que você criou no Supabase. Depois disso tudo que você lançar é guardado na nuvem automaticamente.</p>
+  if (!cloudOn) body = `<form class="card" data-form="setup"><h3>1. Ligar o banco de dados</h3>
+    <p class="muted">Crie um projeto grátis em <b>supabase.com</b> e rode o <b>supabase.sql</b> (passo a passo no LEIA-ME). Depois cole aqui os dois dados de <b>Project Settings → API</b>:</p>
+    <label>Project URL<input name="url" required type="url" placeholder="https://xxxx.supabase.co" autocapitalize="none" autocomplete="off"></label>
+    <label>Chave “anon public”<input name="key" required placeholder="eyJ..." autocapitalize="none" autocomplete="off"></label>
+    <button class="btn primary wide">Salvar e continuar</button></form>`;
+  else if (!META.uid) body = `<form class="card" data-form="login"><h3>2. Entrar</h3><p class="muted">Primeira vez? Toque em “Criar minha conta”. Depois é só entrar.</p>
     <label>E-mail<input name="email" type="email" required autocomplete="username" autocapitalize="none"></label>
-    <label>Senha<input name="pass" type="password" required autocomplete="current-password"></label>
-    <button class="btn primary wide">Entrar</button></form>`;
+    <label>Senha (mín. 6 caracteres)<input name="pass" type="password" required minlength="6" autocomplete="current-password"></label>
+    <button class="btn primary wide">Entrar</button>
+    <button type="button" class="btn wide" data-a="signup">Criar minha conta</button>
+    ${window.RIBAS_CONFIG && window.RIBAS_CONFIG.url ? '' : '<button type="button" class="btn small wide" style="background:none;color:var(--muted)" data-a="resetcfg">Trocar URL / chave</button>'}</form>`;
   else body = `<div class="card"><p>☁️ Conectada como <b>${esc(META.email || '')}</b></p>
     <p class="muted">${syncErr ? '⚠️ ' + esc(syncErr) : META.dirty ? 'Tem alterações esperando para serem enviadas (precisa de internet).' : 'Tudo salvo na nuvem.'}
     ${META.lastSync ? '<br>Última sincronização: ' + fmtDate(META.lastSync) : ''}</p>
@@ -703,6 +763,7 @@ async function exportBackup() {
 
 /* ============ ações ============ */
 const actions = {
+  toggle: d => { col[d.k] = !col[d.k]; render(); },
   tab: d => { view = d.v; window.scrollTo(0, 0); render(); },
   close: () => closeSheet(),
   newprod: () => prodSheet(''), editprod: d => prodSheet(d.id),
@@ -743,6 +804,15 @@ const actions = {
     S.sales = S.sales.filter(x => x.id !== d.id); save(); closeSheet(); render();
   },
   syncnow: () => syncNow(true),
+  resetcfg: () => { META.cfgUrl = META.cfgKey = ''; metaSave(); applyCfg(); render(); },
+  async signup() {
+    const email = ($('input[name=email]').value || '').trim(), pass = $('input[name=pass]').value || '';
+    if (!email || pass.length < 6) return toast('Digite e-mail e uma senha de 6+ caracteres');
+    try {
+      if (await signup(email, pass)) { toast('☁️ Conta criada!'); syncErr = ''; await syncNow(true); render(); }
+      else toast('Conta criada! Confirme pelo e-mail e depois toque em Entrar.');
+    } catch (e) { toast(e.message || 'Falha ao criar a conta'); }
+  },
   logout: () => { if (confirm('Sair da nuvem? Os dados continuam neste celular.')) { META.access = META.refresh = META.uid = META.email = null; metaSave(); render(); } },
   export: () => exportBackup(),
   import: () => $('#imp').click(),
@@ -750,19 +820,24 @@ const actions = {
 };
 const forms = {
   prod(f, d) {
-    const o = { name: f.name.trim(), sub: (f.sub || '').trim(), price: num(f.price), cost: num(f.cost), min: int(f.min), promoQty: int(f.promoQty), promoPrice: num(f.promoPrice) };
-    if (d.id) Object.assign(prod(d.id), o);
-    else { const p = Object.assign({ id: uid(), stock: 0 }, o); S.products.push(p); const q = int(f.stock); if (q > 0) { p.stock = q; logStock(p, q); } }
-    save(); closeSheet(); render();
-  },
+  const line = (f.line || '').trim(), flavor = (f.flavor || '').trim();
+  const o = { line, flavor, name: (line + ' ' + flavor).trim(), price: num(f.price), cost: num(f.cost), min: int(f.min), promoQty: int(f.promoQty), promoPrice: num(f.promoPrice), promoGroup: (f.promoGroup || '').trim() };
+  if (d.id) Object.assign(prod(d.id), o);
+  else { const p = Object.assign({ id: uid(), stock: 0 }, o); S.products.push(p); const q = int(f.stock); if (q > 0) { p.stock = q; logStock(p, q); } }
+  save(); closeSheet(); render();
+},
   cust(f, d) {
     if (d.id) Object.assign(cust(d.id), { name: f.name.trim(), phone: f.phone.trim() }); else S.customers.push({ id: uid(), name: f.name.trim(), phone: f.phone.trim() });
     save(); closeSheet(); render();
   },
+  setup(f) {
+    const url = f.url.trim();
+    if (!/^https:\/\/.+/i.test(url)) return toast('A URL precisa começar com https://');
+    META.cfgUrl = url; META.cfgKey = f.key.trim(); metaSave(); applyCfg(); updatePill(); render(); toast('Agora entre ou crie sua conta');
+  },
   async login(f) {
-    try { await login(f.email.trim(), f.pass); toast('☁️ Conectada!'); syncErr = ''; await syncNow(true); }
+    try { await login(f.email.trim(), f.pass); toast('☁️ Conectada!'); syncErr = ''; await syncNow(true); render(); }
     catch (e) { toast(e.message || 'Falha no login'); }
-    render();
   }
 };
 
@@ -795,7 +870,7 @@ $('#imp').addEventListener('change', e => {
       const d = JSON.parse(r.result);
       if (!d || !Array.isArray(d.products) || !Array.isArray(d.sales)) throw 0;
       if (!confirm('Substituir os dados atuais pelo backup (' + d.sales.length + ' vendas)?')) return;
-      S = Object.assign(defaults(), d); save(); render(); toast('Backup restaurado!');
+      S = migrate(Object.assign(defaults(), d)); save(); render(); toast('Backup restaurado!');
     } catch (err) { toast('Arquivo de backup inválido'); }
   };
   r.readAsText(f); e.target.value = '';
