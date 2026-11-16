@@ -161,7 +161,7 @@ input[type=date]{min-height:48px}
 <div id="cartbar"></div>
 <nav>
   <button data-a="tab" data-v="estoque"><span>🍫</span>Estoque</button>
-  <button data-a="tab" data-v="vender"><span>🛒</span>Compras</button>
+  <button data-a="tab" data-v="vender"><span>🛍️</span>Vender</button>
   <button data-a="tab" data-v="pend"><span>⏳</span>Pendentes<em id="pbadge" hidden></em></button>
   <button data-a="tab" data-v="lucro"><span>📈</span>Lucro</button>
   <button data-a="tab" data-v="mais"><span>⚙️</span>Mais</button>
@@ -483,7 +483,7 @@ function vVender() {
   const cartCard = lines.length ? `<div class="card cartcard"><h3>🛒 Carrinho</h3>
     ${lines.map(l => `<div class="line"><div class="l"><b>${esc(short(l.p.name))}</b><br><span class="muted">${l.q} × ${brl(l.p.price)}${l.p.promoGroup && l.p.promoQty > 0 ? ' · promoção ' + l.p.promoQty + ' por ' + brl(l.p.promoPrice) : ''}</span></div><div class="r"><b>${brl(l.total)}</b></div></div>`).join('')}
     <div class="tot"><span>Total</span><b>${brl(cartSubtotal())}</b></div></div>` : '';
-  return head('Compras') + cartCard +
+  return head('Vender') + cartCard +
     `<input id="fsearch" class="search" type="search" placeholder="🔎 Buscar sabor ou trufa…" value="${esc(csearch)}" autocomplete="off">` +
     groups().map(([line, items]) => {
       const q = items.reduce((a, p) => a + (cart[p.id] || 0), 0), t = items.reduce((a, p) => a + (byId[p.id] ? byId[p.id].total : 0), 0);
