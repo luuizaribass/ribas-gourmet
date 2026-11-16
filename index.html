@@ -134,6 +134,9 @@ input[type=date]::-webkit-date-and-time-value{text-align:left;margin:0}
 .chipsrow button.on{background:var(--pink);color:#fff}
 .menu{display:flex;align-items:center;gap:12px;width:100%;text-align:left;border:0;cursor:pointer}
 .menu span.ic{font-size:26px}
+#menulist .menu{-webkit-touch-callout:none;-webkit-user-select:none;user-select:none;position:relative;transition:box-shadow .15s}
+.menu .grip{margin-left:auto;color:var(--muted);font-size:20px;opacity:.6}
+.menu.dragging{z-index:5;box-shadow:0 10px 28px rgba(0,0,0,.55);outline:2px solid var(--pink);transition:none}
 .menu small{display:block;color:var(--muted);font-weight:500}
 .empty{text-align:center;color:var(--muted);padding:26px 10px}
 .gh{display:flex;justify-content:space-between;align-items:baseline;width:100%;background:none;border:0;color:var(--yellow);font-weight:800;font-size:18px;padding:16px 4px 4px;text-align:left;cursor:pointer}
@@ -751,13 +754,56 @@ function vLucro() {
 
 /* ============ MAIS ============ */
 function vMais() {
-  const M = (v, ic, t, s) => `<button class="card menu" data-a="tab" data-v="${v}"><span class="ic">${ic}</span><div><b>${t}</b><small>${s}</small></div></button>`;
+  const M = (v, ic, t, s) => [v, `<button class="card menu" data-a="tab" data-v="${v}" data-mk="${v}"><span class="ic">${ic}</span><div><b>${t}</b><small>${s}</small></div><span class="grip">⠿</span></button>`];
   const nuvem = !cloudOn ? 'Ainda não ligado' : !META.uid ? 'Entre para guardar seus dados' : pillParts()[1].replace('☁️ ', '');
-  return head('Mais') + M('repor', '🔔', 'O que repor', reporSub()) + M('precos', '💰', 'Preços e custos', 'Quanto você paga e quanto vende') + M('entradas', '📦', 'Entradas de estoque', `${S.stockLog.length} lançamentos`) +
-    M('extrato', '📒', 'Extrato', 'Tudo que entrou e saiu de produtos') + M('invest', '🧰', 'Investimentos', S.invests.length ? brl(invTotal()) + ' investidos' : 'Bolsa térmica, embalagens…') +
-    M('clientes', '👩', 'Clientes', `${S.customers.length} cadastrados`) + M('hist', '🧾', 'Histórico de vendas', `${S.sales.length} vendas`) +
-    M('nuvem', '☁️', 'Banco de dados', nuvem) + M('calc', '🧮', 'Calculadora', 'Igual à do iPhone') + M('backup', '💾', 'Backup e restaurar', 'Cópia extra dos dados');
+  const items = [M('repor', '🔔', 'O que repor', reporSub()), M('precos', '💰', 'Preços e custos', 'Quanto você paga e quanto vende'), M('entradas', '📦', 'Entradas de estoque', `${S.stockLog.length} lançamentos`),
+    M('extrato', '📒', 'Extrato', 'Tudo que entrou e saiu de produtos'), M('invest', '🧰', 'Investimentos', S.invests.length ? brl(invTotal()) + ' investidos' : 'Bolsa térmica, embalagens…'),
+    M('clientes', '👩', 'Clientes', `${S.customers.length} cadastrados`), M('hist', '🧾', 'Histórico de vendas', `${S.sales.length} vendas`),
+    M('nuvem', '☁️', 'Banco de dados', nuvem), M('calc', '🧮', 'Calculadora', 'Igual à do iPhone'), M('backup', '💾', 'Backup e restaurar', 'Cópia extra dos dados')];
+  const ord = Array.isArray(S.menuOrder) ? S.menuOrder : [], pos = k => { const i = ord.indexOf(k); return i < 0 ? 999 : i; };
+  items.sort((a, b) => pos(a[0]) - pos(b[0]));
+  return head('Mais') + '<p class="muted" style="text-align:center;margin:0 0 6px">Segure um item e arraste para organizar do seu jeito</p><div id="menulist">' + items.map(x => x[1]).join('') + '</div>' +
+    (ord.length ? '<button class="btn small wide" data-a="menureset" style="margin-top:6px">Voltar à ordem original</button>' : '');
 }
+/* arrastar para reordenar o menu "Mais" (segurar ~0,4s e arrastar) */
+(function () {
+  let el = null, timer = 0, drag = false, sy = 0, grab = 0, py = 0, swallow = 0, raf = 0;
+  const list = () => document.getElementById('menulist');
+  const center = n => { const r = n.getBoundingClientRect(); return r.top + r.height / 2; };
+  const place = () => {
+    el.style.transform = 'none';
+    let prev = el.previousElementSibling, next = el.nextElementSibling;
+    while (prev && py - grab < center(prev)) { el.parentNode.insertBefore(el, prev); prev = el.previousElementSibling; }
+    while (next && py - grab > center(next)) { el.parentNode.insertBefore(next, el); next = el.nextElementSibling; }
+    el.style.transform = 'translateY(' + (py - grab - center(el)) + 'px) scale(1.03)';
+  };
+  const tick = () => { if (!drag) return; if (py < 110) window.scrollBy(0, -9); else if (py > innerHeight - 130) window.scrollBy(0, 9); place(); raf = requestAnimationFrame(tick); };
+  const stop = commit => {
+    clearTimeout(timer); cancelAnimationFrame(raf);
+    if (drag && el) {
+      el.classList.remove('dragging'); el.style.transform = '';
+      if (commit) { S.menuOrder = [...list().children].map(c => c.dataset.mk).filter(Boolean); save(); }
+      swallow = Date.now() + 400;
+    }
+    drag = false; el = null;
+  };
+  document.addEventListener('pointerdown', e => {
+    const t = e.target.closest && e.target.closest('#menulist .menu'); if (!t || (e.pointerType === 'mouse' && e.button)) return;
+    el = t; sy = py = e.clientY; drag = false; clearTimeout(timer);
+    timer = setTimeout(() => {
+      if (!el) return; drag = true; grab = sy - center(el); el.classList.add('dragging'); try { navigator.vibrate && navigator.vibrate(15); } catch (x) {}
+      raf = requestAnimationFrame(tick);
+    }, 400);
+  });
+  document.addEventListener('pointermove', e => {
+    if (!el) return; py = e.clientY;
+    if (!drag && Math.abs(py - sy) > 9) { clearTimeout(timer); el = null; }
+  });
+  ['pointerup', 'pointercancel'].forEach(n => document.addEventListener(n, () => { if (el) stop(n === 'pointerup'); }));
+  document.addEventListener('touchmove', e => { if (drag) e.preventDefault(); }, { passive: false });
+  document.addEventListener('contextmenu', e => { if (e.target.closest && e.target.closest('#menulist')) e.preventDefault(); });
+  document.addEventListener('click', e => { if (Date.now() < swallow) { e.stopImmediatePropagation(); e.preventDefault(); } }, true);
+})();
 function vPrecos() {
   return sub('', 'Preços') + `<p class="muted" style="text-align:center;margin:0 0 2px">Paguei = quanto você pagou na Cacau Show. Vendo = preço pro cliente. Se mudar o custo, vale só para as vendas novas: as antigas guardam o que você pagou na época.</p>` +
     groups().map(([line, items]) => gh('precos', line, '') + (isOpen('precos:' + line) ? items.map(p => `<div class="card tight" data-card="${p.id}"><h3>${esc(flavorOf(p))}</h3>
@@ -834,13 +880,13 @@ const fmtHM = iso => { const d = new Date(iso); return pad(d.getHours()) + ':' +
 
 function movements() {
   const out = [];
-  S.stockLog.forEach(e => out.push({ ts: Date.parse(e.date + 'T12:00:00'), at: e.at || '', name: e.name, qty: e.qty, info: e.qty > 0 ? 'Entrada no estoque' : 'Retirada / correção do estoque' }));
+  S.stockLog.forEach(e => out.push({ ts: Date.parse(e.date + 'T12:00:00'), at: e.at || '', name: e.name, qty: e.qty, lts: e.at ? Date.parse(e.at) : 0, info: (e.qty > 0 ? 'Entrada no estoque' : 'Retirada / correção do estoque') + (e.at && dkey(e.at) !== e.date ? ' · lançada em ' + fmtD(dkey(e.at)) : '') }));
   S.sales.forEach(s => s.items.forEach(i => out.push({ ts: Date.parse(s.date), at: s.date, name: i.name, qty: -i.qty,
     info: s.own ? 'Peguei pra mim' : 'Venda' + (s.customerName ? ' · ' + s.customerName : '') + (s.status === 'pending' ? ' (pendente)' : '') })));
   return out.sort((a, b) => b.ts - a.ts || (a.at < b.at ? 1 : a.at > b.at ? -1 : 0));
 }
 function vExtrato() {
-  const ms = movements().filter(m => inRange(m.ts, xp));
+  const ms = movements().filter(m => inRange(m.ts, xp) || (m.lts && inRange(m.lts, xp)));
   const ent = ms.filter(m => m.qty > 0).reduce((a, m) => a + m.qty, 0), sai = -ms.filter(m => m.qty < 0).reduce((a, m) => a + m.qty, 0);
   let last = '', rows = '';
   ms.slice(0, 400).forEach(m => {
@@ -925,7 +971,7 @@ function buildReport(p) {
   vr.push(['TOTAL', '', '', '', '', MB(rev), MB(cost), MB(rev - cost)]);
   const ir = [H(['Data', 'Cliente', 'Produto', 'Quantidade', 'Vendi', 'Paguei', 'Lucro', 'Situação'])];
   sales.forEach(x => x.items.forEach(i => ir.push([fmtDMY(x.date), x.customerName || '', i.name, i.qty, M(i.total), M(i.cost), M(i.total - i.cost), sit(x)])));
-  const ms = movements().filter(m => inRange(m.ts, p)).reverse();
+  const ms = movements().filter(m => inRange(m.ts, p) || (m.lts && inRange(m.lts, p))).reverse();
   const ent = ms.filter(m => m.qty > 0).reduce((a, m) => a + m.qty, 0), sai = -ms.filter(m => m.qty < 0).reduce((a, m) => a + m.qty, 0);
   const er = [H(['Data', 'Produto', 'Movimento', 'Quantidade', 'Detalhe'])];
   ms.forEach(m => er.push([fmtDMY(m.ts), m.name, m.qty > 0 ? 'Entrou' : 'Saiu', m.qty, m.info]));
@@ -1180,6 +1226,7 @@ const actions = {
   paysale: d => paySheet(d.ids.split(',')),
   dopay: d => { const now = new Date().toISOString(); S.sales.forEach(s => { if (payIds.includes(s.id)) { s.status = 'paid'; s.method = d.m; s.paidAt = now; } }); save(); closeSheet(); render(); toast('💰 Pagamento acertado!'); },
   period: d => { period = d.v; render(); },
+  menureset: () => { delete S.menuOrder; save(); render(); },
   newinv: () => invSheet(''), editinv: d => invSheet(d.id),
   delinv: d => { if (confirm('Excluir este investimento?')) { S.invests = S.invests.filter(v => v.id !== d.id); save(); closeSheet(); render(); } },
   newcust: () => custSheet(''), editcust: d => custSheet(d.id),
