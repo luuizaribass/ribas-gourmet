@@ -55,6 +55,7 @@ h3{margin:0;font-size:17px}
 .hero b{display:block;font-size:30px;margin-top:2px}
 .btn{border:0;border-radius:14px;padding:13px 16px;background:var(--card);font-weight:700;cursor:pointer}
 .btn.wide{display:block;width:100%;margin-top:10px;text-align:center;text-decoration:none}
+.card .btn:not(.primary):not(.yellow):not(.danger):not(.small){background:var(--card2);border:1.5px solid #5b3329}
 .btn.primary{background:var(--pink);color:#fff}
 .btn.yellow{background:var(--yellow);color:var(--bg)}
 .btn.danger{background:transparent;border:1.5px solid var(--red);color:var(--red)}
@@ -164,9 +165,9 @@ input[type=date]::-webkit-date-and-time-value{text-align:left;margin:0}
 <div id="app"></div>
 <div id="cartbar"></div>
 <nav>
-  <button data-a="tab" data-v="estoque"><span>🍫</span>Estoque</button>
   <button data-a="tab" data-v="vender"><span>🛍️</span>Vender</button>
   <button data-a="tab" data-v="pend"><span>⏳</span>Pendentes<em id="pbadge" hidden></em></button>
+  <button data-a="tab" data-v="estoque"><span>🍫</span>Estoque</button>
   <button data-a="tab" data-v="lucro"><span>📈</span>Lucro</button>
   <button data-a="tab" data-v="mais"><span>⚙️</span>Mais</button>
 </nav>
@@ -294,14 +295,16 @@ function save() {
   META.dirty = true; metaSave();
   updatePill(); scheduleSync();
 }
+const autoOn = () => META.auto === true;
 function scheduleSync() {
-  if (!cloudOn || !META.uid) return;
+  if (!cloudOn || !META.uid || !autoOn()) return;
   clearTimeout(syncTimer); syncTimer = setTimeout(() => syncNow(), 1500);
 }
 function pillParts() {
   if (!cloudOn) return ['', '☁️ ligar'];
   if (!META.uid) return ['', '☁️ entrar'];
   if (syncErr) return ['err', '☁️ erro'];
+  if (!autoOn()) return META.dirty ? ['pend', '☁️ não salvo'] : ['ok', '☁️ salvo'];
   if (META.dirty) return ['pend', navigator.onLine === false ? '☁️ sem net' : '☁️ enviando…'];
   return ['ok', '☁️ salvo'];
 }
@@ -355,35 +358,87 @@ async function remotePut() {
   const r = await fetch(`${BASE}/rest/v1/app_state?on_conflict=user_id`, { method: 'POST', headers: h, body: JSON.stringify({ user_id: META.uid, data: S, updated_at: S.updatedAt }) });
   if (!r.ok) throw new Error('Erro ao salvar na nuvem (' + r.status + ')');
 }
+const sameTime = (a, b) => !!a && !!b && Date.parse(a) === Date.parse(b);
+const dataInfo = d => ((d.sales || []).length) + ' vendas · ' + ((d.customers || []).length) + ' clientes · ' + ((d.stockLog || []).length) + ' entradas de estoque';
+const isEmptyLocal = () => !S.sales.length && !S.stockLog.length && !S.customers.length;
+let conflictOff = false, CONF = null;
 async function pushLocal() {
   if (!S.updatedAt) { S.updatedAt = new Date().toISOString(); persistLocal(); }
   const stamp = S.updatedAt;
   await remotePut();
+  META.base = stamp;
   if (S.updatedAt === stamp) META.dirty = false; else scheduleSync();
+  META.lastSync = new Date().toISOString(); metaSave();
 }
+function applyRemote(rem) {
+  S = migrate(Object.assign(defaults(), rem.data));
+  S.updatedAt = rem.updated_at; persistLocal();
+  META.base = rem.updated_at; META.dirty = false; META.lastSync = new Date().toISOString(); metaSave();
+  render();
+}
+function conflictSheet(rem) {
+  CONF = rem;
+  sheet(`<h2>⚠️ Dados diferentes</h2>
+  <p class="muted">A nuvem e este aparelho têm dados diferentes. Escolha qual manter. <b>Nada é apagado até você escolher.</b></p>
+  <div class="card"><b>☁️ Na nuvem</b><p class="muted" style="margin:4px 0 0">${dataInfo(rem.data)}<br>Salvo em ${fmtDate(rem.updated_at)}</p></div>
+  <div class="card"><b>📱 Neste aparelho</b><p class="muted" style="margin:4px 0 0">${dataInfo(S)}<br>Última alteração ${S.updatedAt ? fmtDate(S.updatedAt) : '—'}</p></div>
+  <button class="btn primary wide" data-a="usecloud">⬇️ Usar os dados da nuvem</button>
+  <button class="btn danger wide" data-a="uselocal">⬆️ Usar os deste aparelho (substitui a nuvem)</button>
+  <button class="btn wide" data-a="conflictlater">Decidir depois</button>`);
+}
+function autoChoiceSheet() {
+  sheet(`<h2>Backup automático?</h2>
+  <p class="muted">Escolha como guardar seus dados na nuvem. Dá para mudar depois em Mais → Banco de dados.</p>
+  <div class="card"><b>Ligado</b><p class="muted" style="margin:4px 0 0">Tudo que você lança é enviado sozinho. Ao entrar em outro aparelho (celular ou PC), ele abre com os seus dados.</p></div>
+  <div class="card"><b>Desligado (manual)</b><p class="muted" style="margin:4px 0 0">Nada é enviado nem baixado sozinho. Você decide quando salvar ou restaurar, pelos botões.</p></div>
+  <button class="btn primary wide" data-a="autoset" data-v="on">Ligar backup automático</button>
+  <button class="btn wide" data-a="autoset" data-v="off">Deixar desligado (manual)</button>`);
+}
+// Regras de segurança: este aparelho só envia quando a nuvem ainda é a que ele conhece;
+// só baixa sozinho quando ele não tem nada novo; em qualquer outro caso PERGUNTA.
 async function syncNow(manual) {
   if (!cloudOn || !META.uid || syncing) return;
+  if (!manual && !autoOn()) return;
+  if (!manual && conflictOff) return;
   if (navigator.onLine === false) { if (manual) toast('Sem internet'); updatePill(); return; }
   syncing = true;
   try {
     const rem = await remoteGet();
-    const lt = Date.parse(S.updatedAt) || 0, rt = rem ? Date.parse(rem.updated_at) : 0;
-    if (!rem || lt > rt) await pushLocal();
-    else if (rt > lt) {
-      if (META.dirty && !confirm('Os dados da nuvem são mais novos que os deste celular.\n\nOK = usar os da nuvem\nCancelar = manter os do celular e enviar')) await pushLocal();
-      else { S = migrate(Object.assign(defaults(), rem.data)); if (!S.updatedAt) S.updatedAt = rem.updated_at; persistLocal(); META.dirty = false; render(); }
-    } else META.dirty = false;
-    META.lastSync = new Date().toISOString(); syncErr = ''; metaSave();
-    if (manual) toast('☁️ Tudo sincronizado');
+    if (!rem) { if (!isEmptyLocal() || META.dirty) await pushLocal(); }
+    else if (sameTime(rem.updated_at, META.base)) { if (META.dirty) await pushLocal(); }
+    else if (!META.dirty && (META.base || isEmptyLocal())) applyRemote(rem);
+    else if (isEmptyLocal()) applyRemote(rem);
+    else { conflictSheet(rem); syncing = false; updatePill(); return; }
+    syncErr = ''; if (manual) toast('☁️ Tudo sincronizado');
   } catch (e) {
     syncErr = (e && e.message) || 'Falha ao sincronizar'; if (manual) toast(syncErr);
   } finally {
     syncing = false; updatePill(); if (view === 'nuvem') render();
   }
 }
+async function cloudPush() {
+  if (!cloudOn || !META.uid) return;
+  try {
+    const rem = await remoteGet();
+    if (rem && !sameTime(rem.updated_at, META.base) && !confirm('A nuvem tem dados diferentes (' + dataInfo(rem.data) + ').\n\nSalvar este aparelho vai SUBSTITUIR o que está na nuvem. Continuar?')) return;
+    await pushLocal(); syncErr = ''; toast('☁️ Backup salvo na nuvem');
+  } catch (e) { syncErr = e.message; toast(syncErr); }
+  updatePill(); if (view === 'nuvem') render();
+}
+async function cloudPull() {
+  if (!cloudOn || !META.uid) return;
+  try {
+    const rem = await remoteGet();
+    if (!rem) return toast('Ainda não tem nada salvo na nuvem');
+    if (!confirm('Restaurar da nuvem (' + dataInfo(rem.data) + ')?\n\nIsso SUBSTITUI os dados deste aparelho.')) return;
+    applyRemote(rem); syncErr = ''; toast('⬇️ Dados restaurados da nuvem');
+  } catch (e) { syncErr = e.message; toast(syncErr); }
+  updatePill(); if (view === 'nuvem') render();
+}
+const afterLogin = () => { if (META.auto === undefined) autoChoiceSheet(); else if (META.auto) syncNow(true); };
 
 /* ============ estado de tela ============ */
-let view = 'estoque', period = '7', cart = {}, fs = {}, payIds = [];
+let view = 'vender', period = '7', cart = {}, fs = {}, payIds = [];
 
 function toast(msg) {
   const t = document.createElement('div'); t.className = 'toast'; t.textContent = msg;
@@ -523,7 +578,7 @@ function checkout() {
   <div class="seg" id="sstatus">
     <button class="on" data-a="setstatus" data-v="paid">✅ Já pagou</button>
     <button data-a="setstatus" data-v="pending">⏳ Não pagou</button>
-    <button data-a="setstatus" data-v="own">🙋 Pra mim</button>
+    <button data-a="setstatus" data-v="own">🙋🏻‍♀️ Pra mim</button>
   </div>
   <div class="seg" id="smethod">
     <button class="on" data-a="setmethod" data-v="Pix">Pix</button>
@@ -534,6 +589,7 @@ function checkout() {
     <label>Desconto (R$)<input id="fdisc" inputmode="decimal" placeholder="0,00"></label>
     <label>Data da venda<input id="fdate" type="date" value="${dkey(new Date())}"></label>
   </div>
+  <label>Descrição (opcional)<input id="fdesc" placeholder="ex: entrega na sexta, presente…" autocomplete="off"></label>
   <div id="cashrow" hidden><label>Valor recebido (R$)<input id="frec" inputmode="decimal" placeholder="0,00"></label>
     <div class="troco" id="ftroco"></div></div>
   <div class="totalrow"><span id="flabel">Total</span><b id="ftotal">${brl(cartSubtotal())}</b></div>
@@ -567,8 +623,8 @@ function confirmSale() {
     const it0 = lines.map(l => ({ pid: l.p.id, name: l.p.name, qty: l.q, total: 0, cost: r2(l.q * (l.p.cost || 0)) }));
     it0.forEach(i => { prod(i.pid).stock -= i.qty; });
     const c0 = r2(it0.reduce((a, i) => a + i.cost, 0));
-    S.sales.push({ id: uid(), date: w0.toISOString(), items: it0, subtotal: 0, discount: 0, total: 0, cost: c0, customerId: null, customerName: '', status: 'paid', method: 'Pra mim', own: true, paidAt: w0.toISOString() });
-    save(); cart = {}; closeSheet(); render(); toast('🙋 Retirada registrada (custo ' + brl(c0) + ')'); return;
+    S.sales.push({ id: uid(), date: w0.toISOString(), items: it0, subtotal: 0, discount: 0, total: 0, cost: c0, customerId: null, customerName: '', status: 'paid', method: 'Pra mim', own: true, desc: ($('#fdesc').value || '').trim(), paidAt: w0.toISOString() });
+    save(); cart = {}; closeSheet(); render(); toast('🙋🏻‍♀️ Retirada registrada (custo ' + brl(c0) + ')'); return;
   }
   let cid = null, cname = '';
   if (nameIn) {
@@ -582,7 +638,7 @@ function confirmSale() {
   items.forEach(i => { prod(i.pid).stock -= i.qty; });
   S.sales.push({
     id: uid(), date: when.toISOString(), items, subtotal: sub, discount: disc, total,
-    cost: r2(items.reduce((a, i) => a + i.cost, 0)), customerId: cid, customerName: cname,
+    cost: r2(items.reduce((a, i) => a + i.cost, 0)), customerId: cid, customerName: cname, desc: ($('#fdesc').value || '').trim(),
     status: fs.status, method: fs.status === 'paid' ? fs.method : '', paidAt: fs.status === 'paid' ? when.toISOString() : null
   });
   save(); cart = {}; closeSheet(); render();
@@ -606,8 +662,8 @@ function vPend() {
       const c = cust(k), sum = arr.reduce((a, s) => a + s.total, 0), name = c ? c.name : (arr[0].customerName || 'Cliente removido');
       const wa = waLink(c, sum);
       return `<div class="card"><div class="line" style="border:0;padding-top:0"><div class="l"><h3>${esc(name)}</h3></div><div class="r"><b style="color:var(--yellow);font-size:20px">${brl(sum)}</b></div></div>
-        ${arr.map(s => `<div class="line"><div class="l"><span class="muted">${fmtDate(s.date)}</span><br>${esc(itemsText(s))}</div>
-          <div class="r"><b>${brl(s.total)}</b><br><button class="btn small yellow" data-a="paysale" data-ids="${s.id}" style="margin-top:4px">Acertar</button></div></div>`).join('')}
+        ${arr.map(s => `<div class="line"><div class="l"><span class="muted">${fmtDate(s.date)}</span><br>${esc(itemsText(s))}${s.desc ? `<br><i class="muted">${esc(s.desc)}</i>` : ''}</div>
+          <div class="r"><b>${brl(s.total)}</b><br><button class="btn small yellow" data-a="paysale" data-ids="${s.id}" style="margin-top:4px">Acertar</button><br><button class="btn small danger" data-a="cancelsale" data-id="${s.id}" style="margin-top:6px">Cancelar</button></div></div>`).join('')}
         <div class="row2" style="margin-top:10px">
           <button class="btn small primary" data-a="paysale" data-ids="${arr.map(s => s.id).join(',')}">Acertar tudo</button>
           ${wa ? `<a class="btn small" style="text-align:center;text-decoration:none" href="${wa}" target="_blank" rel="noopener">💬 Cobrar</a>` : '<span></span>'}
@@ -683,7 +739,7 @@ function vLucro() {
     <div class="stat"><b style="color:var(--green)">${brl(recebido)}</b><span>já recebi</span></div>
     <div class="stat ${areceber ? 'warn' : ''}"><b>${brl(areceber)}</b><span>ainda vou receber</span></div>
   </div>
-  ${ownCost > 0 ? `<div class="card"><b>🙋 Peguei pra mim: ${brl(ownCost)}</b><p class="muted" style="margin:4px 0 0">Só o que paguei nas trufas, sem lucro. Já está descontado do meu lucro acima.</p></div>` : ''}
+  ${ownCost > 0 ? `<div class="card"><b>🙋🏻‍♀️ Peguei pra mim: ${brl(ownCost)}</b><p class="muted" style="margin:4px 0 0">Só o que paguei nas trufas, sem lucro. Já está descontado do meu lucro acima.</p></div>` : ''}
   ${semCusto ? `<div class="banner">💡 ${semCusto} ${semCusto > 1 ? 'sabores estão' : 'sabor está'} sem o valor que você paga, então o lucro deles aparece maior que o real. Preencha em Mais → Preços e custos.</div>` : ''}
   <div class="card"><h3>Quanto vendi e quanto lucrei</h3>${sales.length ? chartSVG(b.out) : '<div class="empty">Sem vendas nesse período</div>'}
     <div class="legend"><span><i style="background:#f2c14e"></i>Vendi</span><span><i style="background:#d9246f"></i>Lucro</span></div>
@@ -697,6 +753,7 @@ function vMais() {
   const M = (v, ic, t, s) => `<button class="card menu" data-a="tab" data-v="${v}"><span class="ic">${ic}</span><div><b>${t}</b><small>${s}</small></div></button>`;
   const nuvem = !cloudOn ? 'Ainda não ligado' : !META.uid ? 'Entre para guardar seus dados' : pillParts()[1].replace('☁️ ', '');
   return head('Mais') + M('precos', '💰', 'Preços e custos', 'Quanto você paga e quanto vende') + M('entradas', '📦', 'Entradas de estoque', `${S.stockLog.length} lançamentos`) +
+    M('extrato', '📒', 'Extrato', 'Tudo que entrou e saiu de produtos') +
     M('clientes', '👩', 'Clientes', `${S.customers.length} cadastrados`) + M('hist', '🧾', 'Histórico de vendas', `${S.sales.length} vendas`) +
     M('nuvem', '☁️', 'Banco de dados', nuvem) + M('calc', '🧮', 'Calculadora', 'Igual à do iPhone') + M('backup', '💾', 'Backup e restaurar', 'Cópia extra dos dados');
 }
@@ -733,19 +790,173 @@ function custSheet(id) {
 function vHist() {
   const ss = S.sales.slice().sort((a, b) => a.date < b.date ? 1 : -1).slice(0, 150);
   return sub('', 'Histórico') + (ss.length ? ss.map(s => `<div class="card prod" data-a="sale" data-id="${s.id}"><div class="pinfo"><span class="muted">${fmtDate(s.date)}${s.customerName ? ' · ' + esc(s.customerName) : ''}</span>
-    <div>${esc(itemsText(s))}</div></div><div style="text-align:right">${s.own ? `<b style="color:var(--orange)">− ${brl(s.cost)}</b><br><span class="pill pend">Pra mim</span>` : `<b>${brl(s.total)}</b><br><span class="pill ${s.status}">${s.status === 'paid' ? esc(s.method || 'Pago') : 'Pendente'}</span>`}</div></div>`).join('') : '<div class="empty">Nenhuma venda registrada ainda.</div>');
+    <div>${esc(itemsText(s))}</div>${s.desc ? `<div class="muted"><i>${esc(s.desc)}</i></div>` : ''}</div><div style="text-align:right">${s.own ? `<b style="color:var(--orange)">− ${brl(s.cost)}</b><br><span class="pill pend">Pra mim</span>` : `<b>${brl(s.total)}</b><br><span class="pill ${s.status}">${s.status === 'paid' ? esc(s.method || 'Pago') : 'Pendente'}</span>`}</div></div>`).join('') : '<div class="empty">Nenhuma venda registrada ainda.</div>');
 }
 function saleSheet(id) {
   const s = S.sales.find(x => x.id === id); if (!s) return;
+  const pay = s.status === 'pending' ? 'Pendente' : (s.method || 'Pix');
   sheet(`<h2>${s.own ? 'Retirada (pra mim)' : 'Venda'} de ${fmtDate(s.date)}</h2>
     ${s.customerName ? `<p class="muted">Cliente: ${esc(s.customerName)}</p>` : ''}
+    ${s.desc ? `<p class="muted"><i>${esc(s.desc)}</i></p>` : ''}
     ${s.items.map(i => `<div class="line"><span>${i.qty}× ${esc(i.name)}</span><b>${brl(s.own ? i.cost : i.total)}</b></div>`).join('')}
     ${s.discount ? `<div class="line"><span>Desconto</span><b>− ${brl(s.discount)}</b></div>` : ''}
     <div class="totalrow"><span>${s.own ? 'Custo' : 'Total'}</span><b>${brl(s.own ? s.cost : s.total)}</b></div>
     <p class="muted">${s.own ? 'Peguei pra mim · só o custo, sem lucro' : 'Paguei ' + brl(s.cost) + ' · Lucro ' + brl(s.total - s.cost) + ' · ' + (s.status === 'paid' ? 'Pago via ' + esc(s.method) : 'Pendente')}</p>
     ${s.status === 'pending' ? `<button class="btn yellow wide" data-a="paysale" data-ids="${s.id}">Acertar pagamento</button>` : ''}
-    <button class="btn danger wide" data-a="delsale" data-id="${s.id}">Excluir venda (devolve ao estoque)</button>`);
+    <h3 style="margin-top:20px">✏️ Alterar</h3>
+    <form data-form="editsale" data-id="${s.id}">
+      <label>Data<input name="date" type="date" value="${dkey(s.date)}"></label>
+      ${s.own ? '' : `<label>Cliente<input name="cname" list="clist2" value="${esc(s.customerName)}" autocomplete="off" autocapitalize="words"></label>
+      <datalist id="clist2">${S.customers.map(c => `<option value="${esc(c.name)}">`).join('')}</datalist>
+      <label>Forma de pagamento<select name="pay">${['Pix', 'Dinheiro', 'Cartão', 'Pendente'].map(o => `<option${o === pay ? ' selected' : ''}>${o}</option>`).join('')}</select></label>`}
+      <label>Descrição (opcional)<input name="desc" value="${esc(s.desc || '')}" autocomplete="off"></label>
+      <button class="btn primary wide">Salvar alterações</button>
+    </form>
+    <button class="btn danger wide" data-a="delsale" data-id="${s.id}">${s.own ? 'Excluir retirada' : 'Excluir venda'} (devolve ao estoque)</button>`);
 }
+
+/* ---------- períodos, extrato e planilha ---------- */
+const PL = { today: 'Hoje', week: 'Essa semana', '30': 'Últimos 30 dias', all: 'Tudo' };
+const RANGES = [['today', 'Hoje'], ['week', 'Essa semana'], ['30', '30 dias'], ['all', 'Tudo']];
+function rangeStart(p) {
+  const n = new Date(), t0 = new Date(n.getFullYear(), n.getMonth(), n.getDate());
+  if (p === 'today') return t0;
+  if (p === 'week') return new Date(t0.getFullYear(), t0.getMonth(), t0.getDate() - ((t0.getDay() + 6) % 7));
+  if (p === '30') return new Date(t0.getFullYear(), t0.getMonth(), t0.getDate() - 29);
+  return null;
+}
+const inRange = (ts, p) => { const st = rangeStart(p); return !st || ts >= st.getTime(); };
+let xp = 'week', xlsP = 'week';
+const chipsFor = (cur, act) => `<div class="chipsrow">${RANGES.map(([v, t]) => `<button class="${cur === v ? 'on' : ''}" data-a="${act}" data-v="${v}">${t}</button>`).join('')}</div>`;
+const fmtDMY = iso => { const d = new Date(iso); return pad(d.getDate()) + '/' + pad(d.getMonth() + 1) + '/' + d.getFullYear(); };
+const fmtHM = iso => { const d = new Date(iso); return pad(d.getHours()) + ':' + pad(d.getMinutes()); };
+
+function movements() {
+  const out = [];
+  S.stockLog.forEach(e => out.push({ ts: Date.parse(e.date + 'T12:00:00'), at: e.at || '', name: e.name, qty: e.qty, info: e.qty > 0 ? 'Entrada no estoque' : 'Retirada / correção do estoque' }));
+  S.sales.forEach(s => s.items.forEach(i => out.push({ ts: Date.parse(s.date), at: s.date, name: i.name, qty: -i.qty,
+    info: s.own ? 'Peguei pra mim' : 'Venda' + (s.customerName ? ' · ' + s.customerName : '') + (s.status === 'pending' ? ' (pendente)' : '') })));
+  return out.sort((a, b) => b.ts - a.ts || (a.at < b.at ? 1 : a.at > b.at ? -1 : 0));
+}
+function vExtrato() {
+  const ms = movements().filter(m => inRange(m.ts, xp));
+  const ent = ms.filter(m => m.qty > 0).reduce((a, m) => a + m.qty, 0), sai = -ms.filter(m => m.qty < 0).reduce((a, m) => a + m.qty, 0);
+  let last = '', rows = '';
+  ms.slice(0, 400).forEach(m => {
+    const day = dkey(m.ts);
+    if (day !== last) { rows += `<h3 style="margin:16px 4px 4px;color:var(--pink2)">${fmtD(day)}</h3>`; last = day; }
+    rows += `<div class="card tight prod"><div class="pinfo"><b>${esc(short(m.name))}</b><br><span class="muted">${esc(m.info)}</span></div>
+      <b style="font-size:22px;color:${m.qty > 0 ? 'var(--green)' : 'var(--orange)'}">${m.qty > 0 ? '+' : '−'}${Math.abs(m.qty)}</b></div>`;
+  });
+  return sub('', 'Extrato') + chipsFor(xp, 'xp') + `<div class="stats">
+    <div class="stat"><b style="color:var(--green)">+${ent}</b><span>entraram</span></div>
+    <div class="stat"><b style="color:var(--orange)">−${sai}</b><span>saíram</span></div>
+    <div class="stat"><b>${ent - sai > 0 ? '+' : ent - sai < 0 ? '−' : ''}${Math.abs(ent - sai)}</b><span>saldo</span></div></div>` +
+    (rows || '<div class="empty">Nenhuma movimentação nesse período.</div>') +
+    `<p class="muted" style="text-align:center;margin-top:12px">Entradas e retiradas de estoque, vendas e o que você pegou pra você.</p>`;
+}
+
+/* planilha .xlsx (sem biblioteca: funciona offline) */
+const XLSX_MIME = 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
+const CRC_T = (() => { const t = new Uint32Array(256); for (let n = 0; n < 256; n++) { let c = n; for (let k = 0; k < 8; k++) c = c & 1 ? 0xEDB88320 ^ (c >>> 1) : c >>> 1; t[n] = c >>> 0; } return t; })();
+const crc32 = b => { let c = 0xFFFFFFFF; for (let i = 0; i < b.length; i++) c = CRC_T[(c ^ b[i]) & 255] ^ (c >>> 8); return (c ^ 0xFFFFFFFF) >>> 0; };
+function zipStore(files) {
+  const enc = new TextEncoder(), chunks = [], central = []; let off = 0;
+  const n = new Date(), dt = ((n.getFullYear() - 1980) << 9) | ((n.getMonth() + 1) << 5) | n.getDate(), tm = (n.getHours() << 11) | (n.getMinutes() << 5) | (n.getSeconds() >> 1);
+  const u16 = v => [v & 255, (v >> 8) & 255], u32 = v => [v & 255, (v >>> 8) & 255, (v >>> 16) & 255, (v >>> 24) & 255];
+  files.forEach(f => {
+    const name = enc.encode(f.name), data = enc.encode(f.data), crc = crc32(data);
+    const lh = new Uint8Array([...u32(0x04034b50), ...u16(20), ...u16(0x0800), ...u16(0), ...u16(tm), ...u16(dt), ...u32(crc), ...u32(data.length), ...u32(data.length), ...u16(name.length), ...u16(0)]);
+    chunks.push(lh, name, data); central.push({ name, crc, size: data.length, off });
+    off += lh.length + name.length + data.length;
+  });
+  const cstart = off;
+  central.forEach(c => {
+    const ch = new Uint8Array([...u32(0x02014b50), ...u16(20), ...u16(20), ...u16(0x0800), ...u16(0), ...u16(tm), ...u16(dt), ...u32(c.crc), ...u32(c.size), ...u32(c.size), ...u16(c.name.length), ...u16(0), ...u16(0), ...u16(0), ...u16(0), ...u32(0), ...u32(c.off)]);
+    chunks.push(ch, c.name); off += ch.length + c.name.length;
+  });
+  chunks.push(new Uint8Array([...u32(0x06054b50), ...u16(0), ...u16(0), ...u16(central.length), ...u16(central.length), ...u32(off - cstart), ...u32(cstart), ...u16(0)]));
+  const total = chunks.reduce((a, c) => a + c.length, 0), out = new Uint8Array(total); let o = 0;
+  chunks.forEach(c => { out.set(c, o); o += c.length; });
+  return out;
+}
+const xe = t => String(t).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c])).replace(/[\u0000-\u0008\u000B\u000C\u000E-\u001F]/g, '');
+const colL = i => { let t = ''; i++; while (i > 0) { const m = (i - 1) % 26; t = String.fromCharCode(65 + m) + t; i = Math.floor((i - 1) / 26); } return t; };
+function sheetXml(sh) {
+  const rows = sh.rows.map((r, ri) => `<row r="${ri + 1}">` + r.map((c, ci) => {
+    if (c === null || c === undefined || c === '') return '';
+    const o = (typeof c === 'object') ? c : { v: c }, ref = colL(ci) + (ri + 1), st = o.s !== undefined ? ` s="${o.s}"` : '';
+    return (typeof o.v === 'number' && isFinite(o.v)) ? `<c r="${ref}"${st}><v>${o.v}</v></c>` : `<c r="${ref}"${st} t="inlineStr"><is><t xml:space="preserve">${xe(o.v)}</t></is></c>`;
+  }).join('') + '</row>').join('');
+  const cols = sh.widths ? '<cols>' + sh.widths.map((w, i) => `<col min="${i + 1}" max="${i + 1}" width="${w}" customWidth="1"/>`).join('') + '</cols>' : '';
+  return `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"><sheetViews><sheetView workbookViewId="0">${sh.freeze ? '<pane ySplit="1" topLeftCell="A2" activePane="bottomLeft" state="frozen"/>' : ''}</sheetView></sheetViews>${cols}<sheetData>${rows}</sheetData></worksheet>`;
+}
+function buildXlsx(sheets) {
+  const NS = 'http://schemas.openxmlformats.org/spreadsheetml/2006/main', RS = 'http://schemas.openxmlformats.org/officeDocument/2006/relationships', PR = 'http://schemas.openxmlformats.org/package/2006/relationships';
+  const files = [
+    { name: '[Content_Types].xml', data: `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/><Default Extension="xml" ContentType="application/xml"/><Override PartName="/xl/workbook.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml"/>${sheets.map((_, i) => `<Override PartName="/xl/worksheets/sheet${i + 1}.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/>`).join('')}<Override PartName="/xl/styles.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.styles+xml"/></Types>` },
+    { name: '_rels/.rels', data: `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Relationships xmlns="${PR}"><Relationship Id="rId1" Type="${RS}/officeDocument" Target="xl/workbook.xml"/></Relationships>` },
+    { name: 'xl/workbook.xml', data: `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><workbook xmlns="${NS}" xmlns:r="${RS}"><sheets>${sheets.map((sh, i) => `<sheet name="${xe(sh.name)}" sheetId="${i + 1}" r:id="rId${i + 1}"/>`).join('')}</sheets></workbook>` },
+    { name: 'xl/_rels/workbook.xml.rels', data: `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Relationships xmlns="${PR}">${sheets.map((_, i) => `<Relationship Id="rId${i + 1}" Type="${RS}/worksheet" Target="worksheets/sheet${i + 1}.xml"/>`).join('')}<Relationship Id="rId${sheets.length + 1}" Type="${RS}/styles" Target="styles.xml"/></Relationships>` },
+    { name: 'xl/styles.xml', data: `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><styleSheet xmlns="${NS}"><numFmts count="1"><numFmt numFmtId="164" formatCode="&quot;R$ &quot;#,##0.00"/></numFmts><fonts count="2"><font><sz val="11"/><name val="Calibri"/></font><font><b/><sz val="11"/><name val="Calibri"/></font></fonts><fills count="3"><fill><patternFill patternType="none"/></fill><fill><patternFill patternType="gray125"/></fill><fill><patternFill patternType="solid"><fgColor rgb="FFF2C14E"/><bgColor indexed="64"/></patternFill></fill></fills><borders count="1"><border><left/><right/><top/><bottom/><diagonal/></border></borders><cellStyleXfs count="1"><xf numFmtId="0" fontId="0" fillId="0" borderId="0"/></cellStyleXfs><cellXfs count="5"><xf numFmtId="0" fontId="0" fillId="0" borderId="0" xfId="0"/><xf numFmtId="0" fontId="1" fillId="2" borderId="0" xfId="0" applyFont="1" applyFill="1"/><xf numFmtId="164" fontId="0" fillId="0" borderId="0" xfId="0" applyNumberFormat="1"/><xf numFmtId="164" fontId="1" fillId="0" borderId="0" xfId="0" applyNumberFormat="1" applyFont="1"/><xf numFmtId="0" fontId="1" fillId="0" borderId="0" xfId="0" applyFont="1"/></cellXfs><cellStyles count="1"><cellStyle name="Normal" xfId="0" builtinId="0"/></cellStyles></styleSheet>` }
+  ];
+  sheets.forEach((sh, i) => files.push({ name: `xl/worksheets/sheet${i + 1}.xml`, data: sheetXml(sh) }));
+  return zipStore(files);
+}
+function buildReport(p) {
+  const M = v => ({ v: r2(v), s: 2 }), MB = v => ({ v: r2(v), s: 3 }), B = v => ({ v, s: 4 }), H = a => a.map(v => ({ v, s: 1 }));
+  const sales = S.sales.filter(x => inRange(Date.parse(x.date), p)).sort((a, b) => a.date < b.date ? -1 : 1);
+  const sit = x => x.own ? 'Pra mim' : x.status === 'pending' ? 'Pendente' : 'Pago';
+  const rev = sales.reduce((a, x) => a + x.total, 0), cost = sales.reduce((a, x) => a + x.cost, 0);
+  const ownCost = sales.filter(x => x.own).reduce((a, x) => a + x.cost, 0);
+  const recebido = sales.filter(x => !x.own && x.status === 'paid').reduce((a, x) => a + x.total, 0);
+  const areceber = sales.filter(x => x.status === 'pending').reduce((a, x) => a + x.total, 0);
+  const units = sales.filter(x => !x.own).reduce((a, x) => a + x.items.reduce((b, i) => b + i.qty, 0), 0);
+  const now = new Date();
+  const resumo = { name: 'Resumo', widths: [34, 22], rows: [[B('Ribas Gourmet')], ['Período', PL[p]], ['Gerado em', fmtDMY(now) + ' ' + fmtHM(now)], [],
+    [B('Vendi'), MB(rev)], [B('Paguei (custo dos produtos)'), MB(cost)], [B('Lucro'), MB(rev - cost)], ['   (o lucro já desconta o que peguei pra mim)'],
+    ['Peguei pra mim (só custo)', M(ownCost)], ['Já recebi', M(recebido)], ['Ainda vou receber', M(areceber)], [],
+    ['Número de vendas', sales.filter(x => !x.own).length], ['Unidades vendidas', units]] };
+  const vr = [H(['Data', 'Hora', 'Cliente', 'Itens', 'Descrição', 'Vendi', 'Paguei', 'Lucro', 'Pagamento', 'Situação'])];
+  sales.forEach(x => vr.push([fmtDMY(x.date), fmtHM(x.date), x.customerName || '', itemsText(x), x.desc || '', M(x.total), M(x.cost), M(x.total - x.cost), x.status === 'paid' && !x.own ? x.method : '', sit(x)]));
+  vr.push(['TOTAL', '', '', '', '', MB(rev), MB(cost), MB(rev - cost)]);
+  const ir = [H(['Data', 'Cliente', 'Produto', 'Quantidade', 'Vendi', 'Paguei', 'Lucro', 'Situação'])];
+  sales.forEach(x => x.items.forEach(i => ir.push([fmtDMY(x.date), x.customerName || '', i.name, i.qty, M(i.total), M(i.cost), M(i.total - i.cost), sit(x)])));
+  const ms = movements().filter(m => inRange(m.ts, p)).reverse();
+  const ent = ms.filter(m => m.qty > 0).reduce((a, m) => a + m.qty, 0), sai = -ms.filter(m => m.qty < 0).reduce((a, m) => a + m.qty, 0);
+  const er = [H(['Data', 'Produto', 'Movimento', 'Quantidade', 'Detalhe'])];
+  ms.forEach(m => er.push([fmtDMY(m.ts), m.name, m.qty > 0 ? 'Entrou' : 'Saiu', m.qty, m.info]));
+  er.push([B('TOTAL'), '', 'Entrou', ent], ['', '', 'Saiu', -sai], ['', '', 'Saldo', ent - sai]);
+  const pend = S.sales.filter(x => x.status === 'pending' && !x.own).sort((a, b) => a.date < b.date ? -1 : 1);
+  const pr = [H(['Cliente', 'Data', 'Itens', 'Descrição', 'Valor'])];
+  pend.forEach(x => pr.push([x.customerName || '', fmtDMY(x.date), itemsText(x), x.desc || '', M(x.total)]));
+  pr.push(['TOTAL', '', '', '', MB(pend.reduce((a, x) => a + x.total, 0))]);
+  const sr = [H(['Linha', 'Sabor', 'Em estoque', 'Paguei (un)', 'Vendo (un)', 'Lucro (un)', 'Pago no estoque'])];
+  S.products.forEach(q => sr.push([q.line || q.name, q.flavor || '', q.stock, M(q.cost || 0), M(q.price), M(q.price - (q.cost || 0)), M(Math.max(0, q.stock) * (q.cost || 0))]));
+  return [resumo,
+    { name: 'Vendas', rows: vr, freeze: true, widths: [12, 8, 18, 40, 28, 13, 13, 13, 13, 11] },
+    { name: 'Itens vendidos', rows: ir, freeze: true, widths: [12, 18, 28, 11, 13, 13, 13, 11] },
+    { name: 'Extrato de estoque', rows: er, freeze: true, widths: [12, 28, 12, 11, 36] },
+    { name: 'Pendentes', rows: pr, freeze: true, widths: [20, 12, 40, 28, 13] },
+    { name: 'Estoque atual', rows: sr, freeze: true, widths: [20, 22, 12, 13, 13, 13, 16] }];
+}
+async function exportXlsx() {
+  const bytes = buildXlsx(buildReport(xlsP)), name = 'ribas-planilha-' + (xlsP === '30' ? '30dias' : xlsP) + '-' + dkey(new Date()) + '.xlsx';
+  const blob = new Blob([bytes], { type: XLSX_MIME });
+  try {
+    const file = new File([blob], name, { type: XLSX_MIME });
+    if (navigator.canShare && navigator.canShare({ files: [file] })) { await navigator.share({ files: [file], title: 'Planilha Ribas Gourmet' }); return; }
+  } catch (e) { if (e && e.name === 'AbortError') return; }
+  const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = name;
+  document.body.appendChild(a); a.click(); a.remove(); toast('Planilha baixada');
+}
+function xlsCard() {
+  return `<div class="card"><h3>📊 Planilha do que aconteceu</h3>
+  <p class="muted">Um arquivo .xlsx com vendas, itens vendidos, extrato de estoque, pendentes e estoque atual. Abre no Excel, Numbers ou Planilhas.</p>
+  ${chipsFor(xlsP, 'xlsp')}<p class="muted" style="margin:0 0 4px">Semana = de segunda a domingo.</p>
+  <button class="btn primary wide" data-a="xlsx">Baixar planilha · ${PL[xlsP]}</button></div>`;
+}
+
 const CALC = { cur: '0', acc: null, op: null, fresh: true, lastOp: null, lastB: null, err: false };
 const cNum = () => parseFloat(CALC.cur);
 function cApply(a, b, o) { return o === '+' ? a + b : o === '−' ? a - b : o === '×' ? a * b : (b === 0 ? NaN : a / b); }
@@ -811,15 +1022,25 @@ function vNuvem() {
     <button class="btn primary wide">Entrar</button>
     <button type="button" class="btn wide" data-a="signup">Criar minha conta</button>
     ${window.RIBAS_CONFIG && window.RIBAS_CONFIG.url ? '' : '<button type="button" class="btn small wide" style="background:none;color:var(--muted)" data-a="resetcfg">Trocar URL / chave</button>'}</form>`;
-  else body = `<div class="card"><p>☁️ Conectada como <b>${esc(META.email || '')}</b></p>
-    <p class="muted">${syncErr ? '⚠️ ' + esc(syncErr) : META.dirty ? 'Tem alterações esperando para serem enviadas (precisa de internet).' : 'Tudo salvo na nuvem.'}
-    ${META.lastSync ? '<br>Última sincronização: ' + fmtDate(META.lastSync) : ''}</p>
-    <button class="btn primary wide" data-a="syncnow">Sincronizar agora</button>
+  else {
+    const a = META.auto;
+    const stat = syncErr ? '⚠️ ' + esc(syncErr)
+      : a === true ? (META.dirty ? 'Alterações esperando para serem enviadas (precisa de internet).' : 'Tudo salvo na nuvem.')
+      : (META.dirty ? '⚠️ Há alterações neste aparelho que <b>ainda não estão</b> na nuvem.' : '✅ A nuvem está igual a este aparelho.');
+    body = `<div class="card"><p>☁️ Conectada como <b>${esc(META.email || '')}</b></p>
+    <p class="muted">${stat}${META.lastSync ? '<br>Última vez que salvou/baixou: ' + fmtDate(META.lastSync) : ''}</p></div>
+    <div class="card"><h3>Backup automático</h3>
+    <div class="seg"><button class="${a === true ? 'on' : ''}" data-a="autoset" data-v="on">Ligado</button><button class="${a === false ? 'on' : ''}" data-a="autoset" data-v="off">Desligado</button></div>
+    <p class="muted" style="margin-top:10px">${a === true ? 'Tudo que você lança é enviado sozinho. Se este aparelho e a nuvem ficarem diferentes, o app pergunta qual manter antes de trocar qualquer coisa.' : a === false ? 'Nada é enviado nem baixado sozinho. Use os botões abaixo quando quiser.' : 'Escolha acima como quer o backup.'}</p>
+    <button class="btn primary wide" data-a="cloudpush">⬆️ Salvar backup agora</button>
+    <button class="btn wide" data-a="cloudpull">⬇️ Restaurar da nuvem</button>
+    ${a === true ? '<button class="btn wide" data-a="syncnow">Sincronizar agora</button>' : ''}
     <button class="btn danger wide" data-a="logout">Sair</button></div>`;
-  return sub('', 'Nuvem') + body + `<div class="card"><h3>Como funciona</h3><p class="muted">O app guarda tudo no celular e também envia para o seu banco de dados. Sem internet você continua lançando normalmente; quando a internet voltar, ele envia sozinho. Se trocar de celular ou apagar o app, é só entrar de novo que seus dados voltam.</p></div>`;
+  }
+  return sub('', 'Nuvem') + body + `<div class="card"><h3>Como funciona</h3><p class="muted">O app sempre guarda tudo no próprio aparelho e funciona sem internet. O banco de dados é uma cópia na nuvem: com o backup automático ligado ela é atualizada sozinha; desligado, só quando você tocar em “Salvar backup agora”. Ao entrar num aparelho novo, o app nunca apaga nada sem perguntar.</p></div>`;
 }
 function vBackup() {
-  return sub('', 'Backup') + `<div class="card"><p>Uma cópia extra em arquivo, para guardar no iCloud, WhatsApp ou e-mail. Vale fazer de vez em quando, mesmo com o banco de dados ligado.</p>
+  return sub('', 'Backup') + xlsCard() + `<div class="card"><h3>💾 Backup completo</h3><p>Uma cópia extra em arquivo, para guardar no iCloud, WhatsApp ou e-mail. Vale fazer de vez em quando, mesmo com o banco de dados ligado.</p>
   <p class="muted">Último backup: ${S.lastBackup ? fmtDate(S.lastBackup) : 'nunca'}</p>
   <button class="btn primary wide" data-a="export">Exportar backup</button>
   <button class="btn wide" data-a="import">Restaurar de um backup</button></div>
@@ -881,20 +1102,42 @@ const actions = {
     S.sales = S.sales.filter(x => x.id !== d.id); save(); closeSheet(); render();
   },
   ck: d => { calcKey(d.k); render(); },
+  xp: d => { xp = d.v; render(); },
+  xlsp: d => { xlsP = d.v; render(); },
+  xlsx: () => exportXlsx(),
+  cancelsale: d => {
+    if (!confirm('Cancelar esta compra? Os itens voltam para o estoque.')) return;
+    const x = S.sales.find(v => v.id === d.id); if (!x) return;
+    x.items.forEach(i => { const q = prod(i.pid); if (q) q.stock += i.qty; });
+    S.sales = S.sales.filter(v => v.id !== d.id); save(); render(); toast('Compra cancelada');
+  },
   syncnow: () => syncNow(true),
+  autoset: d => {
+    META.auto = d.v === 'on'; metaSave(); clearTimeout(syncTimer); closeSheet(); updatePill(); render();
+    toast(META.auto ? '☁️ Backup automático ligado' : 'Backup manual (automático desligado)');
+    if (META.auto) syncNow(true);
+  },
+  cloudpush: () => cloudPush(),
+  cloudpull: () => cloudPull(),
+  usecloud: () => { if (CONF && confirm('Os dados deste aparelho serão substituídos pelos da nuvem. Continuar?')) { applyRemote(CONF); closeSheet(); toast('⬇️ Usando os dados da nuvem'); } },
+  async uselocal() {
+    if (!CONF || !confirm('Os dados da nuvem serão SUBSTITUÍDOS pelos deste aparelho (' + dataInfo(CONF.data) + ' vão ser apagados da nuvem). Continuar?')) return;
+    try { await pushLocal(); closeSheet(); updatePill(); render(); toast('⬆️ Nuvem atualizada com os dados deste aparelho'); } catch (e) { toast(e.message); }
+  },
+  conflictlater: () => { conflictOff = true; closeSheet(); toast('Nada foi alterado. Decida em Mais → Banco de dados.'); },
   resetcfg: () => { META.cfgUrl = META.cfgKey = ''; metaSave(); applyCfg(); render(); },
   async signup() {
     const email = ($('input[name=email]').value || '').trim(), pass = $('input[name=pass]').value || '';
     if (!email || pass.length < 6) return toast('Digite e-mail e uma senha de 6+ caracteres');
     try {
-      if (await signup(email, pass)) { toast('☁️ Conta criada!'); syncErr = ''; await syncNow(true); render(); }
+      if (await signup(email, pass)) { toast('☁️ Conta criada!'); syncErr = ''; afterLogin(); render(); }
       else toast('Conta criada! Confirme pelo e-mail e depois toque em Entrar.');
     } catch (e) { toast(e.message || 'Falha ao criar a conta'); }
   },
   logout: () => { if (confirm('Sair da nuvem? Os dados continuam neste celular.')) { META.access = META.refresh = META.uid = META.email = null; metaSave(); render(); } },
   export: () => exportBackup(),
   import: () => $('#imp').click(),
-  reset: () => { if (confirm('Apagar TODOS os dados? Isso não pode ser desfeito.') && confirm('Tem certeza mesmo? Faça um backup antes se tiver dúvida.')) { S = defaults(); cart = {}; save(); render(); toast('Dados apagados'); } }
+  reset: () => { if (confirm('Apagar TODOS os dados?' + (autoOn() ? ' O backup automático está ligado: a nuvem também será apagada.' : '') + ' Isso não pode ser desfeito.') && confirm('Tem certeza mesmo? Faça um backup antes se tiver dúvida.')) { S = defaults(); cart = {}; save(); render(); toast('Dados apagados'); } }
 };
 const forms = {
   prod(f, d) {
@@ -908,13 +1151,30 @@ const forms = {
     if (d.id) Object.assign(cust(d.id), { name: f.name.trim(), phone: f.phone.trim() }); else S.customers.push({ id: uid(), name: f.name.trim(), phone: f.phone.trim() });
     save(); closeSheet(); render();
   },
+  editsale(f, d) {
+    const x = S.sales.find(v => v.id === d.id); if (!x) return;
+    if (f.date && f.date !== dkey(x.date)) x.date = new Date(f.date + 'T12:00:00').toISOString();
+    x.desc = (f.desc || '').trim();
+    if (!x.own) {
+      const nm = (f.cname || '').trim();
+      if (f.pay === 'Pendente' && !nm) return toast('Venda pendente precisa do nome do cliente');
+      if (nm) {
+        let c = S.customers.find(v => v.name.toLowerCase() === nm.toLowerCase());
+        if (!c) { c = { id: uid(), name: nm, phone: '' }; S.customers.push(c); }
+        x.customerId = c.id; x.customerName = c.name;
+      } else { x.customerId = null; x.customerName = ''; }
+      if (f.pay === 'Pendente') { x.status = 'pending'; x.method = ''; x.paidAt = null; }
+      else { if (x.status !== 'paid') x.paidAt = new Date().toISOString(); x.status = 'paid'; x.method = f.pay; }
+    } else x.paidAt = x.date;
+    save(); closeSheet(); render(); toast('✅ Alterado!');
+  },
   setup(f) {
     const url = f.url.trim();
     if (!/^https:\/\/.+/i.test(url)) return toast('A URL precisa começar com https://');
     META.cfgUrl = url; META.cfgKey = f.key.trim(); metaSave(); applyCfg(); updatePill(); render(); toast('Agora entre ou crie sua conta');
   },
   async login(f) {
-    try { await login(f.email.trim(), f.pass); toast('☁️ Conectada!'); syncErr = ''; await syncNow(true); render(); }
+    try { await login(f.email.trim(), f.pass); toast('☁️ Conectada!'); syncErr = ''; afterLogin(); render(); }
     catch (e) { toast(e.message || 'Falha no login'); }
   }
 };
@@ -958,9 +1218,9 @@ window.addEventListener('offline', updatePill);
 
 /* ============ render ============ */
 function render() {
-  const V = { estoque: vEstoque, vender: vVender, pend: vPend, lucro: vLucro, mais: vMais, precos: vPrecos, entradas: vEntradas, clientes: vClientes, hist: vHist, calc: vCalc, nuvem: vNuvem, backup: vBackup };
+  const V = { estoque: vEstoque, vender: vVender, pend: vPend, lucro: vLucro, mais: vMais, precos: vPrecos, entradas: vEntradas, extrato: vExtrato, clientes: vClientes, hist: vHist, calc: vCalc, nuvem: vNuvem, backup: vBackup };
   $('#app').innerHTML = V[view]();
-  const nav = ['precos', 'entradas', 'clientes', 'hist', 'calc', 'nuvem', 'backup'].includes(view) ? 'mais' : view;
+  const nav = ['precos', 'entradas', 'extrato', 'clientes', 'hist', 'calc', 'nuvem', 'backup'].includes(view) ? 'mais' : view;
   document.querySelectorAll('nav button').forEach(b => b.classList.toggle('on', b.dataset.v === nav));
   const n = S.sales.filter(s => s.status === 'pending').length, bd = $('#pbadge');
   bd.hidden = !n; bd.textContent = n;
@@ -969,6 +1229,7 @@ function render() {
 }
 render();
 syncNow();
+if (META.uid && META.auto === undefined) setTimeout(autoChoiceSheet, 600);
 if ('serviceWorker' in navigator && location.protocol.startsWith('http')) navigator.serviceWorker.register('sw.js').catch(() => {});
 </script>
 </body>
