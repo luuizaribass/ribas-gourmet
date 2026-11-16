@@ -532,7 +532,7 @@ function stockSheet(id) {
   ${log.length ? `<h3 style="margin-top:18px">Últimos lançamentos</h3>` + log.map(e => `<div class="line"><span>${fmtD(e.date)}</span><b style="color:${e.qty > 0 ? 'var(--green)' : 'var(--red)'}">${e.qty > 0 ? '+' : ''}${e.qty}</b></div>`).join('') : ''}`);
 }
 function logStock(p, qty, date) {
-  S.stockLog.push({ id: uid(), pid: p.id, name: p.name, date: date || dkey(new Date()), qty, at: new Date().toISOString() });
+  S.stockLog.push({ id: uid(), pid: p.id, name: p.name, date: date || dkey(new Date()), qty, cost: p.cost || 0, at: new Date().toISOString() });
 }
 
 /* ============ VENDER ============ */
@@ -722,10 +722,14 @@ function chartSVG(bk) {
   });
   return `<svg viewBox="0 0 ${W} ${H}" width="100%" role="img" aria-label="Gráfico do que você vendeu e do lucro">${g}</svg>`;
 }
+let lmode = 'caixa';
 function vLucro() {
   const sales = S.sales.filter(s => inPeriod(s.date));
   const rev = sales.reduce((a, s) => a + s.total, 0), cost = sales.reduce((a, s) => a + s.cost, 0), profitV = rev - cost;
-  const invP = S.invests.filter(v => inPeriod(v.date + 'T12:00:00')), inv = r2(invP.reduce((a, v) => a + v.value, 0)), profit = profitV - inv;
+  const invP = S.invests.filter(v => inPeriod(v.date + 'T12:00:00')), inv = r2(invP.reduce((a, v) => a + v.value, 0)), profitV2 = profitV - inv;
+  const stIn = S.stockLog.filter(e => e.qty > 0 && (inPeriod(e.date + 'T12:00:00') || (e.at && inPeriod(e.at))));
+  const gEst = r2(stIn.reduce((a, e) => a + e.qty * (e.cost != null ? e.cost : ((prod(e.pid) || {}).cost || 0)), 0)), gTot = r2(gEst + inv);
+  const caixa = lmode === 'caixa', profit = caixa ? rev - gTot : profitV2;
   const recebido = sales.filter(s => s.status === 'paid').reduce((a, s) => a + s.total, 0), areceber = rev - recebido;
   const units = sales.filter(s => !s.own).reduce((a, s) => a + s.items.reduce((b, i) => b + i.qty, 0), 0);
   const b = buckets(sales); sales.forEach(s => { const bb = b.out.find(x => x.key === b.keyOf(s.date)); if (bb) { bb.rev += s.total; bb.profit += s.total - s.cost; } });
@@ -737,7 +741,10 @@ function vLucro() {
   const ownCost = r2(sales.filter(s => s.own).reduce((a, s) => a + s.cost, 0));
   const P = (v, t) => `<button class="${period === v ? 'on' : ''}" data-a="period" data-v="${v}">${t}</button>`;
   return head('Lucro') + `<div class="chipsrow">${P('7', '7 dias')}${P('30', '30 dias')}${P('month', 'Este mês')}${P('all', 'Tudo')}</div>
-  <div class="hero"><span>${inv > 0 ? 'Meu lucro depois dos investimentos' : 'Meu lucro completo (o que vendi − o que paguei)'}</span><b>${brl(profit)}</b><span>${inv > 0 ? 'Vendas ' + brl(profitV) + ' − investimentos ' + brl(inv) : rev > 0 ? 'Margem de ' + Math.round(profit / rev * 100) + '%' : 'Sem vendas nesse período'}</span></div>
+  <div class="chipsrow"><button class="${caixa ? 'on' : ''}" data-a="lmode" data-v="caixa">Depois de tudo que gastei</button><button class="${caixa ? '' : 'on'}" data-a="lmode" data-v="vendas">Só das vendas</button></div>
+  <div class="hero"><span>${caixa ? 'Meu lucro depois de tudo que gastei' : inv > 0 ? 'Meu lucro das vendas − investimentos' : 'Meu lucro completo (o que vendi − o que paguei)'}</span><b style="${profit < 0 ? 'color:#ffd0d0' : ''}">${brl(profit)}</b><span>${caixa ? 'Vendi ' + brl(rev) + ' − pago do estoque ' + brl(gTot) : inv > 0 ? 'Vendas ' + brl(profitV) + ' − investimentos ' + brl(inv) : rev > 0 ? 'Margem de ' + Math.round(profit / rev * 100) + '%' : 'Sem vendas nesse período'}</span></div>
+  ${caixa ? `<div class="card"><h3>Pago do estoque</h3><div class="line"><span>Estoque comprado (dívida)</span><b>${brl(gEst)}</b></div><div class="line"><span>Investimentos</span><b>${brl(inv)}</b></div><div class="totalrow"><span>Total que gastei</span><b>${brl(gTot)}</b></div>
+    <p class="muted" style="margin:8px 0 0">Estoque = o que você lançou de entrada na aba Estoque × o que paga em cada trufa. ${profit < 0 ? 'Fica negativo até as vendas cobrirem o que gastou.' : 'Você já cobriu o que gastou.'}</p></div>` : ''}
   <div class="stats">
     <div class="stat"><b>${brl(rev)}</b><span>vendi</span></div>
     <div class="stat"><b>${brl(cost)}</b><span>paguei</span></div>
@@ -1313,6 +1320,7 @@ const actions = {
   async sharerepor() { try { await navigator.share({ title: 'Lista para repor', text: reporText() }); } catch (e) {} },
   xp: d => { xp = d.v; render(); },
   dp: d => { dp = d.v; render(); },
+  lmode: d => { lmode = d.v; render(); },
   newnote: () => { const n = { id: uid(), text: '', at: new Date().toISOString(), upd: new Date().toISOString(), pin: false }; S.notes.push(n); curNote = n.id; view = 'nota'; window.scrollTo(0, 0); render(); setTimeout(() => { const t = $('#ntext'); t && t.focus(); }, 60); },
   opennote: d => { curNote = d.id; view = 'nota'; window.scrollTo(0, 0); render(); },
   noteback: () => { noteEnd(); view = 'notas'; render(); },
