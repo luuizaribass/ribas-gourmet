@@ -174,6 +174,7 @@ input[type=date]::-webkit-date-and-time-value{text-align:left;margin:0}
   <button data-a="tab" data-v="pend"><span>⏳</span>Pendentes<em id="pbadge" hidden></em></button>
   <button data-a="tab" data-v="estoque"><span>🍫</span>Estoque</button>
   <button data-a="tab" data-v="lucro"><span>📈</span>Lucro</button>
+  <button data-a="tab" data-v="fin"><span>📒</span>Extrato</button>
   <button data-a="tab" data-v="mais"><span>⚙️</span>Mais</button>
 </nav>
 <div class="ov" id="ov" hidden><div class="sheet" id="sh"></div></div>
@@ -769,7 +770,7 @@ function vMais() {
   const M = (v, ic, t, s) => [v, `<button class="card menu" data-a="tab" data-v="${v}" data-mk="${v}"><span class="ic">${ic}</span><div><b>${t}</b><small>${s}</small></div><span class="grip">⠿</span></button>`];
   const nuvem = !cloudOn ? 'Ainda não ligado' : !META.uid ? 'Entre para guardar seus dados' : pillParts()[1].replace('☁️ ', '');
   const items = [M('repor', '🔔', 'O que repor', reporSub()), M('precos', '💰', 'Preços e custos', 'Quanto você paga e quanto vende'), M('entradas', '📦', 'Entradas de estoque', `${S.stockLog.length} lançamentos`),
-    M('extrato', '📒', 'Extrato', 'Tudo que entrou e saiu de produtos'), M('dados', '🏆', 'Mais vendidos', 'O que os clientes mais gostam'), M('notas', '📝', 'Notas', S.notes.length ? S.notes.length + (S.notes.length > 1 ? ' notas' : ' nota') : 'Seu bloco de notas'), M('invest', '🧰', 'Investimentos', S.invests.length ? brl(invTotal()) + ' investidos' : 'Bolsa térmica, embalagens…'),
+    M('extrato', '📦', 'Movimento do estoque', 'Quais trufas entraram e saíram'), M('dados', '🏆', 'Mais vendidos', 'O que os clientes mais gostam'), M('notas', '📝', 'Notas', S.notes.length ? S.notes.length + (S.notes.length > 1 ? ' notas' : ' nota') : 'Seu bloco de notas'), M('invest', '🧰', 'Investimentos', S.invests.length ? brl(invTotal()) + ' investidos' : 'Bolsa térmica, embalagens…'),
     M('clientes', '👩', 'Clientes', `${S.customers.length} cadastrados`), M('hist', '🧾', 'Histórico de vendas', `${S.sales.length} vendas`),
     M('nuvem', '☁️', 'Banco de dados', nuvem), M('calc', '🧮', 'Calculadora', 'Igual à do iPhone'), M('backup', '💾', 'Backup e restaurar', 'Cópia extra dos dados')];
   const ord = Array.isArray(S.menuOrder) ? S.menuOrder : [], pos = k => { const i = ord.indexOf(k); return i < 0 ? 999 : i; };
@@ -907,7 +908,7 @@ function vExtrato() {
     rows += `<div class="card tight prod"><div class="pinfo"><b>${esc(short(m.name))}</b><br><span class="muted">${esc(m.info)}</span></div>
       <b style="font-size:22px;color:${m.qty > 0 ? 'var(--green)' : 'var(--orange)'}">${m.qty > 0 ? '+' : '−'}${Math.abs(m.qty)}</b></div>`;
   });
-  return sub('', 'Extrato') + chipsFor(xp, 'xp') + `<div class="stats">
+  return sub('', 'Estoque (movimento)') + chipsFor(xp, 'xp') + `<div class="stats">
     <div class="stat"><b style="color:var(--green)">+${ent}</b><span>entraram</span></div>
     <div class="stat"><b style="color:var(--orange)">−${sai}</b><span>saíram</span></div>
     <div class="stat"><b>${ent - sai > 0 ? '+' : ent - sai < 0 ? '−' : ''}${Math.abs(ent - sai)}</b><span>saldo</span></div></div>` +
@@ -1162,6 +1163,41 @@ function noteEnd() {
   curNote = null;
 }
 
+/* ---------- Extrato (tipo banco) ---------- */
+let fp = '30';
+const nf = v => Math.abs(v).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+function finRows() {
+  const r = [];
+  S.sales.forEach(x => {
+    if (x.own) return;
+    const paid = x.status === 'paid', ts = Date.parse(paid ? (x.paidAt || x.date) : x.date);
+    r.push({ ts, at: x.date, amt: x.total, kind: 'sale', id: x.id, pend: !paid, title: 'Venda' + (x.customerName ? ' ' + x.customerName : ''),
+      sub: (paid ? (x.method || '') : 'a receber') + (x.desc ? ' · ' + x.desc : '') });
+  });
+  S.invests.forEach(v => r.push({ ts: Date.parse(v.date + 'T12:00:00'), at: v.at || v.date, amt: -v.value, kind: 'inv', id: v.id, title: v.name, sub: 'Investimento' + (v.note ? ' · ' + v.note : '') }));
+  S.stockLog.forEach(e => { if (e.qty > 0) { const c = e.qty * (e.cost != null ? e.cost : ((prod(e.pid) || {}).cost || 0)); if (c > 0) r.push({ ts: Date.parse(e.date + 'T12:00:00'), at: e.at || e.date, amt: -r2(c), kind: 'est', id: e.id, title: 'Estoque ' + short(e.name), sub: e.qty + (e.qty > 1 ? ' unidades' : ' unidade') }); } });
+  return r.sort((a, b) => b.ts - a.ts || (a.at < b.at ? 1 : a.at > b.at ? -1 : 0));
+}
+function vFin() {
+  const rows = finRows().filter(m => inRange(m.ts, fp));
+  const real = rows.filter(m => !m.pend), ent = r2(real.filter(m => m.amt > 0).reduce((a, m) => a + m.amt, 0)), sai = r2(-real.filter(m => m.amt < 0).reduce((a, m) => a + m.amt, 0)), saldo = r2(ent - sai);
+  const receber = r2(rows.filter(m => m.pend).reduce((a, m) => a + m.amt, 0));
+  const col = v => v > 0 ? 'var(--green)' : v < 0 ? 'var(--red)' : 'var(--cream)';
+  let last = '', html = '';
+  const dayNet = {}; real.forEach(m => { const k = dkey(m.ts); dayNet[k] = r2((dayNet[k] || 0) + m.amt); });
+  rows.slice(0, 500).forEach(m => {
+    const day = dkey(m.ts);
+    if (day !== last) { html += `<div class="line" style="border:0;margin-top:14px;padding:0 4px"><b style="color:var(--pink2)">${fmtD(day)}</b><span class="muted">${dayNet[day] !== undefined ? (dayNet[day] < 0 ? '− ' : '+ ') + nf(dayNet[day]) : ''}</span></div>`; last = day; }
+    const sg = m.amt < 0 ? '−' : '+';
+    html += `<div class="card tight prod" ${m.kind !== 'est' ? `data-a="${m.kind === 'sale' ? 'opensale' : 'editinv'}" data-id="${m.id}"` : ''}><div class="pinfo"><b>${esc(m.title)}</b><br><span class="muted">${esc(m.sub)}</span></div>
+      <b style="font-size:19px;white-space:nowrap;color:${m.pend ? 'var(--yellow)' : col(m.amt)}">${sg} ${nf(m.amt)}</b></div>`;
+  });
+  return head('Extrato') + chipsFor(fp, 'fp') + `<div class="hero"><span>Saldo do período</span><b style="${saldo < 0 ? 'color:#ffd0d0' : ''}">${saldo < 0 ? '− ' : ''}${brl(Math.abs(saldo))}</b><span>${receber ? 'Ainda a receber: ' + brl(receber) : 'Entrou − saiu'}</span></div>
+  <div class="stats" style="grid-template-columns:1fr 1fr"><div class="stat"><b style="color:var(--green)">+ ${nf(ent)}</b><span>entrou</span></div><div class="stat"><b style="color:var(--red)">− ${nf(sai)}</b><span>saiu</span></div></div>
+  <button class="btn wide" data-a="newinv">+ Lançar gasto (investimento)</button>` +
+  (html || '<div class="empty">Nada nesse período.</div>') + `<p class="muted" style="text-align:center;margin-top:12px">Vendas pagas entram (+). Estoque comprado e investimentos saem (−). Vendas pendentes aparecem em amarelo e só contam quando você receber.</p>`;
+}
+
 const CALC = { cur: '0', acc: null, op: null, fresh: true, lastOp: null, lastB: null, err: false };
 const cNum = () => parseFloat(CALC.cur);
 function cApply(a, b, o) { return o === '+' ? a + b : o === '−' ? a - b : o === '×' ? a * b : (b === 0 ? NaN : a / b); }
@@ -1320,6 +1356,8 @@ const actions = {
   async sharerepor() { try { await navigator.share({ title: 'Lista para repor', text: reporText() }); } catch (e) {} },
   xp: d => { xp = d.v; render(); },
   dp: d => { dp = d.v; render(); },
+  fp: d => { fp = d.v; render(); },
+  opensale: d => saleSheet(d.id),
   lmode: d => { lmode = d.v; render(); },
   newnote: () => { const n = { id: uid(), text: '', at: new Date().toISOString(), upd: new Date().toISOString(), pin: false }; S.notes.push(n); curNote = n.id; view = 'nota'; window.scrollTo(0, 0); render(); setTimeout(() => { const t = $('#ntext'); t && t.focus(); }, 60); },
   opennote: d => { curNote = d.id; view = 'nota'; window.scrollTo(0, 0); render(); },
@@ -1451,7 +1489,7 @@ window.addEventListener('offline', updatePill);
 
 /* ============ render ============ */
 function render() {
-  const V = { estoque: vEstoque, vender: vVender, pend: vPend, lucro: vLucro, mais: vMais, precos: vPrecos, entradas: vEntradas, extrato: vExtrato, repor: vRepor, dados: vDados, notas: vNotas, nota: vNota, invest: vInvest, clientes: vClientes, hist: vHist, calc: vCalc, nuvem: vNuvem, backup: vBackup };
+  const V = { estoque: vEstoque, vender: vVender, pend: vPend, lucro: vLucro, mais: vMais, precos: vPrecos, entradas: vEntradas, extrato: vExtrato, repor: vRepor, fin: vFin, dados: vDados, notas: vNotas, nota: vNota, invest: vInvest, clientes: vClientes, hist: vHist, calc: vCalc, nuvem: vNuvem, backup: vBackup };
   $('#app').innerHTML = V[view]();
   const nav = ['notas', 'nota', 'dados', 'invest', 'repor', 'precos', 'entradas', 'extrato', 'clientes', 'hist', 'calc', 'nuvem', 'backup'].includes(view) ? 'mais' : view;
   document.querySelectorAll('nav button').forEach(b => b.classList.toggle('on', b.dataset.v === nav));
