@@ -173,7 +173,6 @@ input[type=date]::-webkit-date-and-time-value{text-align:left;margin:0}
   <button data-a="tab" data-v="vender"><span>🛍️</span>Vender</button>
   <button data-a="tab" data-v="pend"><span>⏳</span>Pendentes<em id="pbadge" hidden></em></button>
   <button data-a="tab" data-v="estoque"><span>🍫</span>Estoque</button>
-  <button data-a="tab" data-v="lucro"><span>📈</span>Lucro</button>
   <button data-a="tab" data-v="fin"><span>📒</span>Extrato</button>
   <button data-a="tab" data-v="mais"><span>⚙️</span>Mais</button>
 </nav>
@@ -741,7 +740,7 @@ function vLucro() {
   const semCusto = S.products.filter(p => !p.cost).length;
   const ownCost = r2(sales.filter(s => s.own).reduce((a, s) => a + s.cost, 0));
   const P = (v, t) => `<button class="${period === v ? 'on' : ''}" data-a="period" data-v="${v}">${t}</button>`;
-  return head('Lucro') + `<div class="chipsrow">${P('7', '7 dias')}${P('30', '30 dias')}${P('month', 'Este mês')}${P('all', 'Tudo')}</div>
+  return sub('', 'Lucro') + `<div class="chipsrow">${P('7', '7 dias')}${P('30', '30 dias')}${P('month', 'Este mês')}${P('all', 'Tudo')}</div>
   <div class="chipsrow"><button class="${caixa ? 'on' : ''}" data-a="lmode" data-v="caixa">Depois de tudo que gastei</button><button class="${caixa ? '' : 'on'}" data-a="lmode" data-v="vendas">Só das vendas</button></div>
   <div class="hero"><span>${caixa ? 'Meu lucro depois de tudo que gastei' : inv > 0 ? 'Meu lucro das vendas − investimentos' : 'Meu lucro completo (o que vendi − o que paguei)'}</span><b style="${profit < 0 ? 'color:#ffd0d0' : ''}">${brl(profit)}</b><span>${caixa ? 'Vendi ' + brl(rev) + ' − pago do estoque ' + brl(gTot) : inv > 0 ? 'Vendas ' + brl(profitV) + ' − investimentos ' + brl(inv) : rev > 0 ? 'Margem de ' + Math.round(profit / rev * 100) + '%' : 'Sem vendas nesse período'}</span></div>
   ${caixa ? `<div class="card"><h3>Pago do estoque</h3><div class="line"><span>Estoque comprado (dívida)</span><b>${brl(gEst)}</b></div><div class="line"><span>Investimentos</span><b>${brl(inv)}</b></div><div class="totalrow"><span>Total que gastei</span><b>${brl(gTot)}</b></div>
@@ -769,11 +768,11 @@ function vLucro() {
 function vMais() {
   const M = (v, ic, t, s) => [v, `<button class="card menu" data-a="tab" data-v="${v}" data-mk="${v}"><span class="ic">${ic}</span><div><b>${t}</b><small>${s}</small></div><span class="grip">⠿</span></button>`];
   const nuvem = !cloudOn ? 'Ainda não ligado' : !META.uid ? 'Entre para guardar seus dados' : pillParts()[1].replace('☁️ ', '');
-  const items = [M('repor', '🔔', 'O que repor', reporSub()), M('precos', '💰', 'Preços e custos', 'Quanto você paga e quanto vende'), M('entradas', '📦', 'Entradas de estoque', `${S.stockLog.length} lançamentos`),
+  const items = [M('lucro', '📈', 'Lucro', 'Quanto lucrei, gráfico e por item'), M('repor', '🔔', 'O que repor', reporSub()), M('precos', '💰', 'Preços e custos', 'Quanto você paga e quanto vende'), M('entradas', '📦', 'Entradas de estoque', `${S.stockLog.length} lançamentos`),
     M('extrato', '📦', 'Movimento do estoque', 'Quais trufas entraram e saíram'), M('dados', '🏆', 'Mais vendidos', 'O que os clientes mais gostam'), M('notas', '📝', 'Notas', S.notes.length ? S.notes.length + (S.notes.length > 1 ? ' notas' : ' nota') : 'Seu bloco de notas'), M('invest', '🧰', 'Investimentos', S.invests.length ? brl(invTotal()) + ' investidos' : 'Bolsa térmica, embalagens…'),
     M('clientes', '👩', 'Clientes', `${S.customers.length} cadastrados`), M('hist', '🧾', 'Histórico de vendas', `${S.sales.length} vendas`),
     M('nuvem', '☁️', 'Banco de dados', nuvem), M('calc', '🧮', 'Calculadora', 'Igual à do iPhone'), M('backup', '💾', 'Backup e restaurar', 'Cópia extra dos dados')];
-  const ord = Array.isArray(S.menuOrder) ? S.menuOrder : [], pos = k => { const i = ord.indexOf(k); return i < 0 ? 999 : i; };
+  const ord = Array.isArray(S.menuOrder) ? S.menuOrder : [], pos = k => { const i = ord.indexOf(k); return i < 0 ? (k === 'lucro' ? -1 : 999) : i; };
   items.sort((a, b) => pos(a[0]) - pos(b[0]));
   return head('Mais') + '<p class="muted" style="text-align:center;margin:0 0 6px">Segure um item e arraste para organizar do seu jeito</p><div id="menulist">' + items.map(x => x[1]).join('') + '</div>' +
     (ord.length ? '<button class="btn small wide" data-a="menureset" style="margin-top:6px">Voltar à ordem original</button>' : '');
@@ -1491,7 +1490,7 @@ window.addEventListener('offline', updatePill);
 function render() {
   const V = { estoque: vEstoque, vender: vVender, pend: vPend, lucro: vLucro, mais: vMais, precos: vPrecos, entradas: vEntradas, extrato: vExtrato, repor: vRepor, fin: vFin, dados: vDados, notas: vNotas, nota: vNota, invest: vInvest, clientes: vClientes, hist: vHist, calc: vCalc, nuvem: vNuvem, backup: vBackup };
   $('#app').innerHTML = V[view]();
-  const nav = ['notas', 'nota', 'dados', 'invest', 'repor', 'precos', 'entradas', 'extrato', 'clientes', 'hist', 'calc', 'nuvem', 'backup'].includes(view) ? 'mais' : view;
+  const nav = ['lucro', 'notas', 'nota', 'dados', 'invest', 'repor', 'precos', 'entradas', 'extrato', 'clientes', 'hist', 'calc', 'nuvem', 'backup'].includes(view) ? 'mais' : view;
   document.querySelectorAll('nav button').forEach(b => b.classList.toggle('on', b.dataset.v === nav));
   const n = S.sales.filter(s => s.status === 'pending').length, bd = $('#pbadge');
   bd.hidden = !n; bd.textContent = n;
